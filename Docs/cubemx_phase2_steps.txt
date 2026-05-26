@@ -1,0 +1,43 @@
+MPU6050 Faz-2 CubeMX Aktivasyon Rehberi
+=======================================
+
+Bu proje CMake + STM32CubeMX kod-uretimi kullandigi icin, CubeMX adimlari her code-generation
+sonrasi surucu baglanti katmaninin bozulmamasini saglar.
+
+1) I2C etkinlestirme
+--------------------
+- .ioc dosyasini ac.
+- I2C1 birimini "I2C" modunda aktif et.
+- Hiz: Fast Mode (400 kHz).
+- AD0=GND ise MPU6050 7-bit adres 0x68, AD0=VDD ise 0x69.
+
+2) Pin secimi
+-------------
+- I2C1_SCL ve I2C1_SDA pinlerini kart baglantina gore ata.
+- MPU6050 INT pini icin bir GPIO pinini EXTI olarak ata (ornek: PB0 -> GPIO_EXTI0).
+- INT pini pull-up/pull-down secimi donanimina gore ayarlanmalidir.
+
+3) NVIC ayarlari
+----------------
+- I2C1 event/error interruptlarini etkinlestir (gerekliyse).
+- Secilen EXTI hattinin interruptini etkinlestir.
+
+4) Kod uretimi
+--------------
+- "Project Manager -> Code Generator -> Keep User Code when re-generating" acik olmali.
+- Code generation calistir.
+
+5) Uretim sonrasi kontrol listesi
+---------------------------------
+- Core/Inc/main.h: I2C handle declaration ve pin makrolari olusmus olmali.
+- Core/Src/main.c: MX_I2C1_Init() olusmus ve peripheral init bolumunde cagriliyor olmali.
+- Core/Src/stm32f4xx_hal_msp.c: I2C GPIO + clock + NVIC msp init/deinit bloklari olusmus olmali.
+- Core/Src/stm32f4xx_it.c: ilgili EXTI ve I2C IRQ handlerlari olusmus olmali.
+- Core/Inc/stm32f4xx_hal_conf.h: HAL_I2C_MODULE_ENABLED acik olmali.
+
+6) Surucu baglanti notu
+-----------------------
+- mpu6050_driver.c dogrudan HAL cagrisi yapmaz; ts_BusInterface ile calisir.
+- Bu nedenle I2C HAL wrapper fonksiyonlarini uygulama tarafinda sagla:
+  read(), write(), wait(), (opsiyonel) lock(), unlock().
+- ISR tarafinda EXTI callback icinden Mpu6050_Device_InterruptDispatch() cagrisi yap.

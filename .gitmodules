@@ -1,0 +1,3 @@
+[submodule "Drivers/mpu6050"]
+	path = Drivers/mpu6050
+	url = https://github.com/AgahEnes/mpu6050.git
