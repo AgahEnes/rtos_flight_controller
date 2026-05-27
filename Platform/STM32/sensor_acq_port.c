@@ -173,16 +173,19 @@ static bool SensorAcqPort_prvInitMpu6050(void)
 static void SensorAcqPort_prvTask(void *pvArgument)
 {
     uint32_t u32NextWakeTick;
+    uint32_t u32TaskTimestampMs;
     te_SensorAcqRetCode eStepRet;
 
     (void)pvArgument;
 
     u32NextWakeTick = osKernelGetTickCount();
+    u32TaskTimestampMs = HAL_GetTick();
     for (;;)
     {
-        eStepRet = SensorAcq_Step(&gsSensorAcqContext);
+        eStepRet = SensorAcq_Step(&gsSensorAcqContext, u32TaskTimestampMs);
         (void)eStepRet;
 
+        u32TaskTimestampMs += SENSOR_ACQ_TASK_PERIOD_MS;
         u32NextWakeTick += SENSOR_ACQ_TASK_PERIOD_MS;
         (void)osDelayUntil(u32NextWakeTick);
     }

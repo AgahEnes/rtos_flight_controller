@@ -41,7 +41,7 @@ TEST(SensorAcqTest, StepSendsPacketWhenValidImuAvailable)
     sConfig.u16TxBufferLength = sizeof(au8TxBuffer);
 
     ASSERT_EQ(SensorAcq_Init(&sContext, &sConfig), SENSOR_ACQ_OK);
-    EXPECT_EQ(SensorAcq_Step(&sContext), SENSOR_ACQ_OK);
+    EXPECT_EQ(SensorAcq_Step(&sContext, 100U), SENSOR_ACQ_OK);
     EXPECT_TRUE(g_bTxCalled);
     EXPECT_EQ(g_u16LastLen, GNC_TELEM_IMU_PACKET_LENGTH);
 }

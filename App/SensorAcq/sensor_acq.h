@@ -47,9 +47,10 @@ te_SensorAcqRetCode SensorAcq_Init(ts_SensorAcqContext *psContext, const ts_Sens
 /**
  * @brief Executes one acquisition cycle and emits one telemetry frame when valid data exists.
  * @param psContext Acquisition context pointer.
+ * @param u32TaskTimestampMs Deterministic task timestamp in milliseconds.
  * @return SENSOR_ACQ_OK on success, otherwise error code.
  */
-te_SensorAcqRetCode SensorAcq_Step(ts_SensorAcqContext *psContext);
+te_SensorAcqRetCode SensorAcq_Step(ts_SensorAcqContext *psContext, uint32_t u32TaskTimestampMs);
 
 #ifdef __cplusplus
 }

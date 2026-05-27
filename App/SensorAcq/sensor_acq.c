@@ -35,10 +35,11 @@ te_SensorAcqRetCode SensorAcq_Init(ts_SensorAcqContext *psContext, const ts_Sens
 /**
  * @brief Executes one deterministic acquisition cycle.
  * @param psContext Input/Output acquisition runtime context.
+ * @param u32TaskTimestampMs Deterministic task timestamp in milliseconds.
  * @return SENSOR_ACQ_OK on success; otherwise error code.
  * @note Side effects: reads IMU via driver and transmits one telemetry frame when data is valid.
  */
-te_SensorAcqRetCode SensorAcq_Step(ts_SensorAcqContext *psContext)
+te_SensorAcqRetCode SensorAcq_Step(ts_SensorAcqContext *psContext, uint32_t u32TaskTimestampMs)
 {
     ts_Mpu6050_Data sMpuData;
     ts_GncTelemImuPayload sImuPayload;
@@ -61,7 +62,7 @@ te_SensorAcqRetCode SensorAcq_Step(ts_SensorAcqContext *psContext)
     }
 
     sImuPayload.u8Sequence = psContext->u8Sequence;
-    sImuPayload.u32TimestampMs = sMpuData.u32TimestampMs;
+    sImuPayload.u32TimestampMs = u32TaskTimestampMs;
     sImuPayload.f32AccelXMps2 = sMpuData.sAccelMps2.f32X;
     sImuPayload.f32AccelYMps2 = sMpuData.sAccelMps2.f32Y;
     sImuPayload.f32AccelZMps2 = sMpuData.sAccelMps2.f32Z;
