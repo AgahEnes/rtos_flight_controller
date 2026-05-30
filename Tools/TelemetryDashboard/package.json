@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:lan": "vite --host 0.0.0.0",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "serial:list": "node scripts/serial-to-websocket.js --list",
+    "serial:bridge": "node scripts/serial-to-websocket.js"
   },
   "dependencies": {
     "lucide": "^0.468.0",
-    "three": "^0.165.0"
+    "serialport": "^13.0.0",
+    "three": "^0.165.0",
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "vite": "^8.0.14"

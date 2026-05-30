@@ -33,7 +33,70 @@ npm install
 npm run dev
 ```
 
-Open the printed localhost URL in Chrome. Use `Serial` for the STM32 UART stream or `Sim` for a deterministic demo stream.
+Open the printed localhost URL in Chrome.
+
+## Live Data Options
+
+### 1. Direct USB Serial
+
+Use this when STM32 is connected to the same computer that runs the dashboard.
+
+1. Start the dashboard.
+2. Open Chrome at `http://127.0.0.1:5173`.
+3. Press `Serial`.
+4. Select the STM32 virtual COM port.
+
+This path uses Chrome Web Serial and reads the same binary packets produced by `telemetry_task.c`.
+
+### 2. Wired ESP32 Simulation Without ESP32
+
+Use this while ESP32 is not available. It keeps the dashboard side close to the final WiFi architecture:
+
+```text
+STM32 USB/UART -> computer serial relay -> WebSocket -> dashboard
+```
+
+List serial ports:
+
+```bash
+npm run serial:list
+```
+
+Start the relay:
+
+```bash
+npm run serial:bridge -- --port=/dev/tty.usbmodemXXXX --baud=115200
+```
+
+Open the dashboard with the relay URL prefilled:
+
+```text
+http://127.0.0.1:5173/?ws=ws://127.0.0.1:8081/telemetry
+```
+
+Then press `WiFi`. The dashboard receives WebSocket binary data exactly like it will receive data from ESP32 later.
+
+### 3. LAN / Phone Test
+
+Run the dashboard on all network interfaces:
+
+```bash
+npm run dev:lan
+```
+
+If the computer and phone are on the same WiFi or phone hotspot, open this from the phone:
+
+```text
+http://<computer-ip>:5173/?ws=ws://<computer-ip>:8081/telemetry
+```
+
+For this mode, start the relay with LAN binding:
+
+```bash
+npm run serial:bridge -- --port=/dev/tty.usbmodemXXXX --host=0.0.0.0
+```
+
+This is a useful rehearsal for the ESP32 path because the dashboard is accessed over the network instead of only localhost.
 
 ## Why This Is Separate From Firmware
 
