@@ -20,6 +20,23 @@ typedef struct
     float f32TempC;
 } ts_TelemetryImuPayload;
 
+typedef struct
+{
+    float f32RollRad;
+    float f32PitchRad;
+    float f32YawRad;
+    float f32RollRateRadS;
+    float f32PitchRateRadS;
+    float f32YawRateRadS;
+    uint8_t u8IsEstimated;
+} ts_TelemetryVehicleStatePayload;
+
+typedef struct
+{
+    ts_TelemetryImuPayload sImu;
+    ts_TelemetryVehicleStatePayload sVehicleState;
+} ts_TelemetryPayload;
+
 static uint16_t TelemetryTask_prvCrc16Ccitt(const uint8_t *pu8Data, uint16_t u16Length)
 {
     uint16_t u16Crc = TELEMETRY_TASK_CRC16_INIT;
@@ -61,40 +78,53 @@ static void TelemetryTask_prvWriteF32Le(uint8_t *pu8Dest, float f32Value)
     TelemetryTask_prvWriteU32Le(pu8Dest, u32Raw);
 }
 
-static uint16_t TelemetryTask_prvPackImu(const ts_TelemetryImuPayload *psPayload,
-                                         uint8_t *pu8OutBuffer,
-                                         uint16_t u16OutBufferLen)
+static uint16_t TelemetryTask_prvPackMessage(const ts_TelemetryPayload *psPayload,
+                                                     uint8_t *pu8OutBuffer,
+                                                     uint16_t u16OutBufferLen)
 {
     uint16_t u16Crc;
     uint16_t u16Offset = 0U;
 
-    if ((psPayload == NULL) || (pu8OutBuffer == NULL) || (u16OutBufferLen < TELEMETRY_TASK_IMU_PACKET_LENGTH))
+    if ((psPayload == NULL) || (pu8OutBuffer == NULL) || (u16OutBufferLen < TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH))
     {
         return 0U;
     }
 
     pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_SYNC_BYTE_0;
     pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_SYNC_BYTE_1;
-    pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_MSG_ID_IMU;
-    pu8OutBuffer[u16Offset++] = psPayload->u8Sequence;
+    pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_MSG_ID_IMU_VEHICLE_STATE;
+    pu8OutBuffer[u16Offset++] = psPayload->sImu.u8Sequence;
 
-    TelemetryTask_prvWriteU32Le(&pu8OutBuffer[u16Offset], psPayload->u32TimestampMs);
+    TelemetryTask_prvWriteU32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.u32TimestampMs);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32AccelXMps2);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32AccelYMps2);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32AccelZMps2);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32GyroXRadS);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32GyroYRadS);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32GyroZRadS);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32TempC);
     u16Offset += 4U;
 
-    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->f32AccelXMps2);
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sVehicleState.f32RollRad);
     u16Offset += 4U;
-    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->f32AccelYMps2);
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sVehicleState.f32PitchRad);
     u16Offset += 4U;
-    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->f32AccelZMps2);
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sVehicleState.f32YawRad);
     u16Offset += 4U;
-    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->f32GyroXRadS);
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sVehicleState.f32RollRateRadS);
     u16Offset += 4U;
-    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->f32GyroYRadS);
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sVehicleState.f32PitchRateRadS);
     u16Offset += 4U;
-    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->f32GyroZRadS);
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sVehicleState.f32YawRateRadS);
     u16Offset += 4U;
-    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->f32TempC);
-    u16Offset += 4U;
+    pu8OutBuffer[u16Offset++] = psPayload->sVehicleState.u8IsEstimated;
 
     u16Crc = TelemetryTask_prvCrc16Ccitt(pu8OutBuffer, u16Offset);
     pu8OutBuffer[u16Offset++] = (uint8_t)(u16Crc & 0xFFU);
@@ -129,7 +159,8 @@ te_TelemetryTaskRetCode TelemetryTask_Init(ts_TelemetryTaskContext *psContext,
 te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
 {
     ts_TopicRawImu sRawImu;
-    ts_TelemetryImuPayload sImuPayload;
+    ts_TopicVehicleState sVehicleState;
+    ts_TelemetryPayload sPayload;
     te_GdsRetCode eGdsRet;
     uint16_t u16PacketLength;
 
@@ -149,19 +180,33 @@ te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
         return TELEMETRY_TASK_OK;
     }
 
-    sImuPayload.u8Sequence = psContext->u8Sequence;
-    sImuPayload.u32TimestampMs = sRawImu.u32TimestampMs;
-    sImuPayload.f32AccelXMps2 = sRawImu.sAccel.f32X;
-    sImuPayload.f32AccelYMps2 = sRawImu.sAccel.f32Y;
-    sImuPayload.f32AccelZMps2 = sRawImu.sAccel.f32Z;
-    sImuPayload.f32GyroXRadS = sRawImu.sGyro.f32X;
-    sImuPayload.f32GyroYRadS = sRawImu.sGyro.f32Y;
-    sImuPayload.f32GyroZRadS = sRawImu.sGyro.f32Z;
-    sImuPayload.f32TempC = sRawImu.f32TempC;
+    (void)memset(&sVehicleState, 0, sizeof(sVehicleState));
+    eGdsRet = Gds_ReadVehicleState(&sVehicleState);
+    if (eGdsRet != GDS_OK)
+    {
+        (void)memset(&sVehicleState, 0, sizeof(sVehicleState));
+    }
 
-    u16PacketLength = TelemetryTask_prvPackImu(&sImuPayload,
-                                               psContext->sConfig.pu8TxBuffer,
-                                               psContext->sConfig.u16TxBufferLength);
+    sPayload.sImu.u8Sequence = psContext->u8Sequence;
+    sPayload.sImu.u32TimestampMs = sRawImu.u32TimestampMs;
+    sPayload.sImu.f32AccelXMps2 = sRawImu.sAccel.f32X;
+    sPayload.sImu.f32AccelYMps2 = sRawImu.sAccel.f32Y;
+    sPayload.sImu.f32AccelZMps2 = sRawImu.sAccel.f32Z;
+    sPayload.sImu.f32GyroXRadS = sRawImu.sGyro.f32X;
+    sPayload.sImu.f32GyroYRadS = sRawImu.sGyro.f32Y;
+    sPayload.sImu.f32GyroZRadS = sRawImu.sGyro.f32Z;
+    sPayload.sImu.f32TempC = sRawImu.f32TempC;
+    sPayload.sVehicleState.f32RollRad = sVehicleState.f32RollRad;
+    sPayload.sVehicleState.f32PitchRad = sVehicleState.f32PitchRad;
+    sPayload.sVehicleState.f32YawRad = sVehicleState.f32YawRad;
+    sPayload.sVehicleState.f32RollRateRadS = sVehicleState.f32RollRateRadS;
+    sPayload.sVehicleState.f32PitchRateRadS = sVehicleState.f32PitchRateRadS;
+    sPayload.sVehicleState.f32YawRateRadS = sVehicleState.f32YawRateRadS;
+    sPayload.sVehicleState.u8IsEstimated = (sVehicleState.bIsEstimated == true) ? 1U : 0U;
+
+    u16PacketLength = TelemetryTask_prvPackMessage(&sPayload,
+                                                           psContext->sConfig.pu8TxBuffer,
+                                                           psContext->sConfig.u16TxBufferLength);
     if (u16PacketLength == 0U)
     {
         return TELEMETRY_TASK_ERR_PACK;

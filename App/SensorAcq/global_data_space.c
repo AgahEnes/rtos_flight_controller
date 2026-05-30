@@ -10,7 +10,15 @@ typedef struct
     atomic_uint_fast32_t u32SeqLock;
 } ts_GdsRawImuStorage;
 
+typedef struct
+{
+    ts_TopicVehicleState asVehicleStateBuffers[2];
+    atomic_uint_fast8_t u8ActiveBufferIdx;
+    atomic_uint_fast32_t u32SeqLock;
+} ts_GdsVehicleStateStorage;
+
 static ts_GdsRawImuStorage gsRawImuStorage;
+static ts_GdsVehicleStateStorage gsVehicleStateStorage;
 
 void Gds_ResetRawImu(void)
 {
@@ -22,6 +30,18 @@ void Gds_ResetRawImu(void)
     gsRawImuStorage.asRawImuBuffers[1] = sZeroTopic;
     (void)atomic_store_explicit(&gsRawImuStorage.u8ActiveBufferIdx, 0U, memory_order_relaxed);
     (void)atomic_store_explicit(&gsRawImuStorage.u32SeqLock, 0U, memory_order_relaxed);
+}
+
+void Gds_ResetVehicleState(void)
+{
+    ts_TopicVehicleState sZeroTopic;
+
+    (void)memset(&sZeroTopic, 0, sizeof(sZeroTopic));
+    (void)memset(&gsVehicleStateStorage, 0, sizeof(gsVehicleStateStorage));
+    gsVehicleStateStorage.asVehicleStateBuffers[0] = sZeroTopic;
+    gsVehicleStateStorage.asVehicleStateBuffers[1] = sZeroTopic;
+    (void)atomic_store_explicit(&gsVehicleStateStorage.u8ActiveBufferIdx, 0U, memory_order_relaxed);
+    (void)atomic_store_explicit(&gsVehicleStateStorage.u32SeqLock, 0U, memory_order_relaxed);
 }
 
 te_GdsRetCode Gds_PublishRawImu(const ts_TopicRawImu *psRawImu)
@@ -71,6 +91,62 @@ te_GdsRetCode Gds_ReadRawImu(ts_TopicRawImu *psRawImu)
         *psRawImu = gsRawImuStorage.asRawImuBuffers[u8ActiveIdx];
 
         u32SeqEnd = (uint32_t)atomic_load_explicit(&gsRawImuStorage.u32SeqLock, memory_order_acquire);
+        if ((u32SeqStart == u32SeqEnd) && ((u32SeqEnd & 1U) == 0U))
+        {
+            return GDS_OK;
+        }
+    }
+
+    return GDS_ERR_INCONSISTENT_READ;
+}
+
+te_GdsRetCode Gds_PublishVehicleState(const ts_TopicVehicleState *psVehicleState)
+{
+    uint8_t u8ActiveIdx;
+    uint8_t u8WriteIdx;
+
+    if (psVehicleState == NULL)
+    {
+        return GDS_ERR_ARG;
+    }
+
+    (void)atomic_fetch_add_explicit(&gsVehicleStateStorage.u32SeqLock, 1U, memory_order_acq_rel);
+
+    u8ActiveIdx = (uint8_t)atomic_load_explicit(&gsVehicleStateStorage.u8ActiveBufferIdx, memory_order_acquire);
+    u8WriteIdx = (uint8_t)((uint8_t)1U - u8ActiveIdx);
+
+    gsVehicleStateStorage.asVehicleStateBuffers[u8WriteIdx] = *psVehicleState;
+
+    (void)atomic_store_explicit(&gsVehicleStateStorage.u8ActiveBufferIdx, u8WriteIdx, memory_order_release);
+    (void)atomic_fetch_add_explicit(&gsVehicleStateStorage.u32SeqLock, 1U, memory_order_acq_rel);
+
+    return GDS_OK;
+}
+
+te_GdsRetCode Gds_ReadVehicleState(ts_TopicVehicleState *psVehicleState)
+{
+    uint32_t u32SeqStart;
+    uint32_t u32SeqEnd;
+    uint8_t u8ActiveIdx;
+    uint32_t u32RetryCount;
+
+    if (psVehicleState == NULL)
+    {
+        return GDS_ERR_ARG;
+    }
+
+    for (u32RetryCount = 0U; u32RetryCount < 3U; u32RetryCount++)
+    {
+        u32SeqStart = (uint32_t)atomic_load_explicit(&gsVehicleStateStorage.u32SeqLock, memory_order_acquire);
+        if ((u32SeqStart & 1U) != 0U)
+        {
+            continue;
+        }
+
+        u8ActiveIdx = (uint8_t)atomic_load_explicit(&gsVehicleStateStorage.u8ActiveBufferIdx, memory_order_acquire);
+        *psVehicleState = gsVehicleStateStorage.asVehicleStateBuffers[u8ActiveIdx];
+
+        u32SeqEnd = (uint32_t)atomic_load_explicit(&gsVehicleStateStorage.u32SeqLock, memory_order_acquire);
         if ((u32SeqStart == u32SeqEnd) && ((u32SeqEnd & 1U) == 0U))
         {
             return GDS_OK;

@@ -14,13 +14,17 @@
 #include "mpu6050_ddi_adapter.h"
 #include "sensor_manager.h"
 #include "telemetry_task.h"
+#include "navigation_subsystem.h"
 
 #define APP_PLATFORM_SENSOR_TASK_STACK_WORDS      (512U)
 #define APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS   (512U)
+#define APP_PLATFORM_NAV_TASK_STACK_WORDS         (512U)
 #define APP_PLATFORM_SENSOR_TASK_PERIOD_MS        (10U)
 #define APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS     (100U)
+#define APP_PLATFORM_NAV_TASK_PERIOD_MS           (10U)
 #define APP_PLATFORM_SENSOR_TASK_PRIORITY         (osPriorityAboveNormal)
 #define APP_PLATFORM_TELEMETRY_TASK_PRIORITY      (osPriorityNormal)
+#define APP_PLATFORM_NAV_TASK_PRIORITY            (osPriorityAboveNormal)
 #define APP_PLATFORM_BUS_TIMEOUT_MS               (100U)
 #define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS          (20U)
 #define APP_PLATFORM_UART_TX_TIMEOUT_MS           (5U)
@@ -30,6 +34,7 @@ static I2C_HandleTypeDef *gpxPlatformI2cHandle = NULL;
 static UART_HandleTypeDef *gpxPlatformUartHandle = NULL;
 static osThreadId_t gxAppPlatformSensorTaskHandle = NULL;
 static osThreadId_t gxAppPlatformTelemetryTaskHandle = NULL;
+static osThreadId_t gxAppPlatformNavTaskHandle = NULL;
 static osMutexId_t gxAppPlatformI2cBusMutex = NULL;
 
 static ts_Mpu6050_Handle gsMpuHandle;
@@ -38,12 +43,15 @@ static ts_Mpu6050DdiAdapterContext gsMpuDdiContext;
 static ts_ImuDevice gasImuDevices[APP_PLATFORM_IMU_DEVICE_COUNT];
 static ts_SensorManagerContext gsSensorManagerContext;
 static ts_TelemetryTaskContext gsTelemetryTaskContext;
+static ts_NavContext gsNavContext;
 static uint8_t gau8TelemetryTxBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
 
 static StaticTask_t gsAppPlatformSensorTaskCb;
 static StackType_t gau32AppPlatformSensorTaskStack[APP_PLATFORM_SENSOR_TASK_STACK_WORDS];
 static StaticTask_t gsAppPlatformTelemetryTaskCb;
 static StackType_t gau32AppPlatformTelemetryTaskStack[APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS];
+static StaticTask_t gsAppPlatformNavTaskCb;
+static StackType_t gau32AppPlatformNavTaskStack[APP_PLATFORM_NAV_TASK_STACK_WORDS];
 static StaticSemaphore_t gsAppPlatformI2cBusMutexCb;
 
 /**
@@ -152,13 +160,24 @@ static bool AppPlatformPort_prvInitAppLayers(void)
 {
     ts_SensorManagerConfig sSensorManagerConfig;
     ts_TelemetryTaskConfig sTelemetryConfig;
+    ts_NavConfig sNavConfig;
 
     Gds_ResetRawImu();
+    Gds_ResetVehicleState();
     Mpu6050DdiAdapter_Bind(&gasImuDevices[0], &gsMpuDdiContext, &gsMpuHandle);
 
     sSensorManagerConfig.psImuDevices = gasImuDevices;
     sSensorManagerConfig.u8ImuDeviceCount = 1U;
     if (SensorManager_Init(&gsSensorManagerContext, &sSensorManagerConfig) != SENSOR_MANAGER_OK)
+    {
+        return false;
+    }
+
+    sNavConfig.f32Alpha = NAV_CFG_DEFAULT_ALPHA;
+    sNavConfig.f32DtS = NAV_CFG_DEFAULT_DT_S;
+    sNavConfig.f32ZeroEpsilon = NAV_CFG_ZERO_EPSILON;
+    sNavConfig.u8StuckThresholdCycles = NAV_CFG_STUCK_THRESHOLD_CYCLES;
+    if (Navigation_Init(&gsNavContext, &sNavConfig) != NAV_RET_OK)
     {
         return false;
     }
@@ -221,6 +240,39 @@ static void AppPlatformPort_prvTelemetryTask(void *pvArgument)
     }
 }
 
+/**
+ * @brief Navigation periodic thread entry.
+ * @param pvArgument Unused thread argument.
+ * @retval None.
+ */
+static void AppPlatformPort_prvNavTask(void *pvArgument)
+{
+    uint32_t u32NextWakeTick;
+    ts_TopicRawImu sRawImu;
+    ts_TopicVehicleState sVehicleState;
+    te_GdsRetCode eGdsRet;
+    te_NavigationRetCode eNavRet;
+
+    (void)pvArgument;
+
+    u32NextWakeTick = osKernelGetTickCount();
+    for (;;)
+    {
+        eGdsRet = Gds_ReadRawImu(&sRawImu);
+        if (eGdsRet == GDS_OK)
+        {
+            eNavRet = NavigationTask_Step(&gsNavContext, &sRawImu, &sVehicleState);
+            if (eNavRet == NAV_RET_OK)
+            {
+                (void)Gds_PublishVehicleState(&sVehicleState);
+            }
+        }
+
+        u32NextWakeTick += APP_PLATFORM_NAV_TASK_PERIOD_MS;
+        (void)osDelayUntil(u32NextWakeTick);
+    }
+}
+
 bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle)
 {
     const osMutexAttr_t xI2cMutexAttr =
@@ -279,6 +331,15 @@ osThreadId_t AppPlatformPort_CreateTask(void)
         .cb_mem = &gsAppPlatformTelemetryTaskCb,
         .cb_size = sizeof(gsAppPlatformTelemetryTaskCb)
     };
+    const osThreadAttr_t xNavTaskAttr =
+    {
+        .name = "app_platform_nav",
+        .priority = APP_PLATFORM_NAV_TASK_PRIORITY,
+        .stack_mem = gau32AppPlatformNavTaskStack,
+        .stack_size = sizeof(gau32AppPlatformNavTaskStack),
+        .cb_mem = &gsAppPlatformNavTaskCb,
+        .cb_size = sizeof(gsAppPlatformNavTaskCb)
+    };
 
     if (gxAppPlatformSensorTaskHandle != NULL)
     {
@@ -293,6 +354,12 @@ osThreadId_t AppPlatformPort_CreateTask(void)
 
     gxAppPlatformTelemetryTaskHandle = osThreadNew(AppPlatformPort_prvTelemetryTask, NULL, &xTelemetryTaskAttr);
     if (gxAppPlatformTelemetryTaskHandle == NULL)
+    {
+        return NULL;
+    }
+
+    gxAppPlatformNavTaskHandle = osThreadNew(AppPlatformPort_prvNavTask, NULL, &xNavTaskAttr);
+    if (gxAppPlatformNavTaskHandle == NULL)
     {
         return NULL;
     }

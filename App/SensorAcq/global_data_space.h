@@ -24,6 +24,18 @@ typedef struct
     bool bIsValid;
 } ts_TopicRawImu;
 
+typedef struct
+{
+    float f32RollRad;
+    float f32PitchRad;
+    float f32YawRad;
+    float f32RollRateRadS;
+    float f32PitchRateRadS;
+    float f32YawRateRadS;
+    uint32_t u32TimestampMs;
+    bool bIsEstimated;
+} ts_TopicVehicleState;
+
 typedef enum
 {
     GDS_OK = 0,
@@ -34,6 +46,9 @@ typedef enum
 void Gds_ResetRawImu(void);
 te_GdsRetCode Gds_PublishRawImu(const ts_TopicRawImu *psRawImu);
 te_GdsRetCode Gds_ReadRawImu(ts_TopicRawImu *psRawImu);
+void Gds_ResetVehicleState(void);
+te_GdsRetCode Gds_PublishVehicleState(const ts_TopicVehicleState *psVehicleState);
+te_GdsRetCode Gds_ReadVehicleState(ts_TopicVehicleState *psVehicleState);
 
 #ifdef __cplusplus
 }
