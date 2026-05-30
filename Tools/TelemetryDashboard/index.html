@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>RTOS Flight Telemetry</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="brand-block">
+          <div class="brand-mark">FC</div>
+          <div>
+            <h1>RTOS Flight Telemetry</h1>
+            <p>STM32F411 balance platform live dashboard</p>
+          </div>
+        </div>
+        <div class="toolbar" aria-label="Telemetry controls">
+          <button class="icon-button primary" id="connectSerialButton" type="button">
+            <i data-lucide="usb"></i>
+            <span>Serial</span>
+          </button>
+          <div class="wifi-control">
+            <input id="wifiUrlInput" type="url" value="ws://192.168.4.1:81/telemetry" aria-label="WiFi telemetry WebSocket URL" />
+            <button class="icon-button" id="connectWifiButton" type="button">
+              <i data-lucide="wifi"></i>
+              <span>WiFi</span>
+            </button>
+          </div>
+          <button class="icon-button" id="toggleSimButton" type="button">
+            <i data-lucide="play"></i>
+            <span>Sim</span>
+          </button>
+          <button class="icon-button" id="resetViewButton" type="button" title="Reset estimator">
+            <i data-lucide="rotate-ccw"></i>
+          </button>
+        </div>
+      </header>
+
+      <main class="dashboard-shell">
+        <section class="scene-stage" aria-label="3D vehicle attitude">
+          <canvas id="vehicleCanvas"></canvas>
+          <div class="scene-overlay top-left">
+            <span class="mode-pill" id="modePill">ACQUIRING</span>
+            <span class="link-pill" id="linkPill">NO LINK</span>
+          </div>
+          <div class="scene-overlay bottom-left attitude-strip">
+            <div>
+              <span>Roll</span>
+              <strong id="rollValue">0.0 deg</strong>
+            </div>
+            <div>
+              <span>Pitch</span>
+              <strong id="pitchValue">0.0 deg</strong>
+            </div>
+            <div>
+              <span>Yaw</span>
+              <strong id="yawValue">0.0 deg</strong>
+            </div>
+          </div>
+          <div class="scene-overlay bottom-right estimator-badge" id="estimatorBadge">
+            IMU estimate
+          </div>
+        </section>
+
+        <aside class="right-rail" aria-label="Live telemetry">
+          <section class="panel status-panel">
+            <div class="panel-title">
+              <i data-lucide="activity"></i>
+              <h2>Mission State</h2>
+            </div>
+            <div class="state-grid">
+              <div>
+                <span>Mode</span>
+                <strong id="modeText">Acquiring</strong>
+              </div>
+              <div>
+                <span>Tilt</span>
+                <strong id="tiltValue">0.0 deg</strong>
+              </div>
+              <div>
+                <span>Frames</span>
+                <strong id="frameCountValue">0</strong>
+              </div>
+              <div>
+                <span>Packet</span>
+                <strong id="packetTypeValue">IMU 0x10</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <i data-lucide="gauge"></i>
+              <h2>Sensor Stream</h2>
+            </div>
+            <div class="metric-list">
+              <div><span>Accel X</span><strong id="accelXValue">0.00 m/s2</strong></div>
+              <div><span>Accel Y</span><strong id="accelYValue">0.00 m/s2</strong></div>
+              <div><span>Accel Z</span><strong id="accelZValue">0.00 m/s2</strong></div>
+              <div><span>Gyro X</span><strong id="gyroXValue">0.00 rad/s</strong></div>
+              <div><span>Gyro Y</span><strong id="gyroYValue">0.00 rad/s</strong></div>
+              <div><span>Gyro Z</span><strong id="gyroZValue">0.00 rad/s</strong></div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-title">
+              <i data-lucide="waves"></i>
+              <h2>Barometer</h2>
+            </div>
+            <div class="metric-list compact">
+              <div><span>Temperature</span><strong id="tempValue">0.00 C</strong></div>
+              <div><span>Pressure</span><strong id="pressureValue">-- Pa</strong></div>
+              <div><span>Altitude</span><strong id="altitudeValue">-- m</strong></div>
+            </div>
+          </section>
+        </aside>
+
+        <section class="bottom-band" aria-label="Control and trend data">
+          <section class="panel servo-panel">
+            <div class="panel-title">
+              <i data-lucide="sliders-horizontal"></i>
+              <h2>Servo Commands</h2>
+            </div>
+            <div class="servo-bars">
+              <div>
+                <span>Fin A</span>
+                <meter id="servoAValue" min="-35" max="35" low="-22" high="22" optimum="0" value="0"></meter>
+                <strong id="servoAText">0.0 deg</strong>
+              </div>
+              <div>
+                <span>Fin B</span>
+                <meter id="servoBValue" min="-35" max="35" low="-22" high="22" optimum="0" value="0"></meter>
+                <strong id="servoBText">0.0 deg</strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel chart-panel">
+            <div class="panel-title">
+              <i data-lucide="line-chart"></i>
+              <h2>Attitude Trend</h2>
+            </div>
+            <canvas id="attitudeChart"></canvas>
+          </section>
+
+          <section class="panel chart-panel">
+            <div class="panel-title">
+              <i data-lucide="radio"></i>
+              <h2>Raw IMU Trend</h2>
+            </div>
+            <canvas id="imuChart"></canvas>
+          </section>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
