@@ -1,0 +1,52 @@
+#ifndef APP_TELEMETRY_TELEMETRY_TASK_H_
+#define APP_TELEMETRY_TELEMETRY_TASK_H_
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#define TELEMETRY_TASK_SYNC_BYTE_0               (0xA5U)
+#define TELEMETRY_TASK_SYNC_BYTE_1               (0x5AU)
+#define TELEMETRY_TASK_MSG_ID_IMU                (0x10U)
+#define TELEMETRY_TASK_IMU_PACKET_LENGTH         (38U)
+#define TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH      (TELEMETRY_TASK_IMU_PACKET_LENGTH)
+
+typedef bool (*tpfn_TelemetryTxSend)(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext);
+
+typedef enum
+{
+    TELEMETRY_TASK_OK = 0,
+    TELEMETRY_TASK_ERR_ARG,
+    TELEMETRY_TASK_ERR_STATE,
+    TELEMETRY_TASK_ERR_GDS,
+    TELEMETRY_TASK_ERR_PACK,
+    TELEMETRY_TASK_ERR_TX
+} te_TelemetryTaskRetCode;
+
+typedef struct
+{
+    tpfn_TelemetryTxSend pfnUartSend;
+    void *vpUartContext;
+    uint8_t *pu8TxBuffer;
+    uint16_t u16TxBufferLength;
+} ts_TelemetryTaskConfig;
+
+typedef struct
+{
+    ts_TelemetryTaskConfig sConfig;
+    uint8_t u8Sequence;
+    uint8_t u8IsInitialized;
+} ts_TelemetryTaskContext;
+
+te_TelemetryTaskRetCode TelemetryTask_Init(ts_TelemetryTaskContext *psContext,
+                                           const ts_TelemetryTaskConfig *psConfig);
+te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* APP_TELEMETRY_TELEMETRY_TASK_H_ */

@@ -21,14 +21,13 @@ if(CMAKE_C_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 add_library(app_test_objs STATIC
-  ../../App/SensorAcq/sensor_acq.c
-  ../../App/Telemetry/gnc_telemetry.c
-  mocks/mock_mpu6050_api.c
+  ../../App/SensorAcq/global_data_space.c
+  ../../App/SensorAcq/sensor_manager.c
+  ../../App/Telemetry/telemetry_task.c
 )
 target_include_directories(app_test_objs PUBLIC
   ../../App/SensorAcq
   ../../App/Telemetry
-  ../../App/Ports
   ../../Drivers/mpu6050
   .
 )
@@ -45,7 +44,6 @@ target_include_directories(driver_test_objs PUBLIC
 
 add_executable(app_unit_tests
   sensor_acq_test.cpp
-  gnc_telemetry_test.cpp
 )
 target_link_libraries(app_unit_tests PRIVATE app_test_objs GTest::gtest_main)
 

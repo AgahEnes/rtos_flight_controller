@@ -50,8 +50,10 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${MPU6050_DRV_DIR}/mpu6050_driver.c
     ${MPU6050_DRV_DIR}/mpu6050_stm32_hal_port.c
-    ${APP_DIR}/SensorAcq/sensor_acq.c
-    ${APP_DIR}/Telemetry/gnc_telemetry.c
+    ${APP_DIR}/SensorAcq/global_data_space.c
+    ${APP_DIR}/SensorAcq/sensor_manager.c
+    ${APP_DIR}/Telemetry/telemetry_task.c
+    ${PLATFORM_DIR}/STM32/mpu6050_ddi_adapter.c
     ${PLATFORM_DIR}/STM32/sensor_acq_port.c
 )
 
@@ -59,7 +61,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${MPU6050_DRV_DIR}
     ${APP_DIR}/SensorAcq
     ${APP_DIR}/Telemetry
-    ${APP_DIR}/Ports
     ${PLATFORM_DIR}/STM32
 )
 
