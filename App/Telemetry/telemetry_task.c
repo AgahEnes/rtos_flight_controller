@@ -9,8 +9,6 @@
 
 typedef struct
 {
-    uint8_t u8Sequence;
-    uint32_t u32TimestampMs;
     float f32AccelXMps2;
     float f32AccelYMps2;
     float f32AccelZMps2;
@@ -33,6 +31,8 @@ typedef struct
 
 typedef struct
 {
+    uint8_t u8Sequence;
+    uint32_t u32TimestampMs;
     ts_TelemetryImuPayload sImu;
     ts_TelemetryVehicleStatePayload sVehicleState;
 } ts_TelemetryPayload;
@@ -93,9 +93,9 @@ static uint16_t TelemetryTask_prvPackMessage(const ts_TelemetryPayload *psPayloa
     pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_SYNC_BYTE_0;
     pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_SYNC_BYTE_1;
     pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_MSG_ID_IMU_VEHICLE_STATE;
-    pu8OutBuffer[u16Offset++] = psPayload->sImu.u8Sequence;
+    pu8OutBuffer[u16Offset++] = psPayload->u8Sequence;
 
-    TelemetryTask_prvWriteU32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.u32TimestampMs);
+    TelemetryTask_prvWriteU32Le(&pu8OutBuffer[u16Offset], psPayload->u32TimestampMs);
     u16Offset += 4U;
     TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sImu.f32AccelXMps2);
     u16Offset += 4U;
@@ -142,6 +142,7 @@ te_TelemetryTaskRetCode TelemetryTask_Init(ts_TelemetryTaskContext *psContext,
     }
 
     if ((psConfig->pfnUartSend == NULL) ||
+        (psConfig->pfnGetTickMs == NULL) ||
         (psConfig->pu8TxBuffer == NULL) ||
         (psConfig->u16TxBufferLength < TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH))
     {
@@ -173,11 +174,7 @@ te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
     eGdsRet = Gds_ReadRawImu(&sRawImu);
     if (eGdsRet != GDS_OK)
     {
-        return TELEMETRY_TASK_ERR_GDS;
-    }
-    if (sRawImu.bIsValid == false)
-    {
-        return TELEMETRY_TASK_OK;
+        (void)memset(&sRawImu, 0, sizeof(sRawImu));
     }
 
     (void)memset(&sVehicleState, 0, sizeof(sVehicleState));
@@ -187,8 +184,8 @@ te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
         (void)memset(&sVehicleState, 0, sizeof(sVehicleState));
     }
 
-    sPayload.sImu.u8Sequence = psContext->u8Sequence;
-    sPayload.sImu.u32TimestampMs = sRawImu.u32TimestampMs;
+    sPayload.u8Sequence = psContext->u8Sequence;
+    sPayload.u32TimestampMs = psContext->sConfig.pfnGetTickMs(psContext->sConfig.vpTickContext);
     sPayload.sImu.f32AccelXMps2 = sRawImu.sAccel.f32X;
     sPayload.sImu.f32AccelYMps2 = sRawImu.sAccel.f32Y;
     sPayload.sImu.f32AccelZMps2 = sRawImu.sAccel.f32Z;

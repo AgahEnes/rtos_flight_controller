@@ -27,7 +27,7 @@
 #define APP_PLATFORM_NAV_TASK_PRIORITY            (osPriorityAboveNormal)
 #define APP_PLATFORM_BUS_TIMEOUT_MS               (100U)
 #define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS          (20U)
-#define APP_PLATFORM_UART_TX_TIMEOUT_MS           (5U)
+#define APP_PLATFORM_UART_TX_TIMEOUT_MS           (20U)
 #define APP_PLATFORM_IMU_DEVICE_COUNT             (1U)
 
 static I2C_HandleTypeDef *gpxPlatformI2cHandle = NULL;
@@ -53,6 +53,18 @@ static StackType_t gau32AppPlatformTelemetryTaskStack[APP_PLATFORM_TELEMETRY_TAS
 static StaticTask_t gsAppPlatformNavTaskCb;
 static StackType_t gau32AppPlatformNavTaskStack[APP_PLATFORM_NAV_TASK_STACK_WORDS];
 static StaticSemaphore_t gsAppPlatformI2cBusMutexCb;
+
+/**
+ * @brief Returns RTOS kernel tick count in milliseconds for telemetry timestamps.
+ * @param vpContext Unused callback context.
+ * @return Elapsed time in milliseconds since kernel start.
+ */
+static uint32_t AppPlatformPort_prvGetTickMs(void *vpContext)
+{
+    (void)vpContext;
+
+    return osKernelGetTickCount();
+}
 
 /**
  * @brief Sends telemetry packet over configured UART.
@@ -184,6 +196,8 @@ static bool AppPlatformPort_prvInitAppLayers(void)
 
     sTelemetryConfig.pfnUartSend = AppPlatformPort_prvUartSend;
     sTelemetryConfig.vpUartContext = NULL;
+    sTelemetryConfig.pfnGetTickMs = AppPlatformPort_prvGetTickMs;
+    sTelemetryConfig.vpTickContext = NULL;
     sTelemetryConfig.pu8TxBuffer = gau8TelemetryTxBuffer;
     sTelemetryConfig.u16TxBufferLength = sizeof(gau8TelemetryTxBuffer);
     if (TelemetryTask_Init(&gsTelemetryTaskContext, &sTelemetryConfig) != TELEMETRY_TASK_OK)

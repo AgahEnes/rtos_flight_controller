@@ -15,18 +15,26 @@ extern "C" {
 #define TELEMETRY_TASK_FRAME_HEADER_LENGTH       (4U)
 #define TELEMETRY_TASK_FRAME_CRC_LENGTH          (2U)
 
-/* Payload bytes in combined frame: timestamp + 7x float (accel/gyro/temp). */
-#define TELEMETRY_TASK_IMU_PACKET_LENGTH         (32U)
+#define TELEMETRY_TASK_PACKET_TIMESTAMP_LENGTH   (4U)
+
+/* Payload bytes in combined frame: 7x float (accel/gyro/temp). */
+#define TELEMETRY_TASK_IMU_PACKET_LENGTH         (28U)
 
 /* Payload bytes in combined frame: 6x float (attitude/rates) + isEstimated. */
 #define TELEMETRY_TASK_VEHICLE_PACKET_LENGTH     (25U)
 
-#define TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH      (TELEMETRY_TASK_FRAME_HEADER_LENGTH + \
+#define TELEMETRY_TASK_FRAME_PAYLOAD_LENGTH      (TELEMETRY_TASK_PACKET_TIMESTAMP_LENGTH + \
                                                     TELEMETRY_TASK_IMU_PACKET_LENGTH + \
-                                                    TELEMETRY_TASK_VEHICLE_PACKET_LENGTH + \
+                                                    TELEMETRY_TASK_VEHICLE_PACKET_LENGTH)
+
+#define TELEMETRY_TASK_FRAME_LENGTH              (TELEMETRY_TASK_FRAME_HEADER_LENGTH + \
+                                                    TELEMETRY_TASK_FRAME_PAYLOAD_LENGTH + \
                                                     TELEMETRY_TASK_FRAME_CRC_LENGTH)
 
+#define TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH      (TELEMETRY_TASK_FRAME_LENGTH)
+
 typedef bool (*tpfn_TelemetryTxSend)(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext);
+typedef uint32_t (*tpfn_TelemetryGetTickMs)(void *vpContext);
 
 typedef enum
 {
@@ -42,6 +50,8 @@ typedef struct
 {
     tpfn_TelemetryTxSend pfnUartSend;
     void *vpUartContext;
+    tpfn_TelemetryGetTickMs pfnGetTickMs;
+    void *vpTickContext;
     uint8_t *pu8TxBuffer;
     uint16_t u16TxBufferLength;
 } ts_TelemetryTaskConfig;

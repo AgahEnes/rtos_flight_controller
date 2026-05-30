@@ -13,6 +13,55 @@ uint16_t g_u16LastLen = 0U;
 uint8_t g_au8LastFrame[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH] = {0};
 uint8_t g_u8TxCallCount = 0U;
 uint8_t g_u8LastMsgId = 0U;
+uint32_t g_u32FakeTxTickMs = 0U;
+
+uint32_t prvReadU32Le(const uint8_t *pu8Data)
+{
+    return static_cast<uint32_t>(pu8Data[0]) |
+           (static_cast<uint32_t>(pu8Data[1]) << 8U) |
+           (static_cast<uint32_t>(pu8Data[2]) << 16U) |
+           (static_cast<uint32_t>(pu8Data[3]) << 24U);
+}
+
+float prvReadF32Le(const uint8_t *pu8Data)
+{
+    uint32_t u32Raw = prvReadU32Le(pu8Data);
+    float f32Value = 0.0F;
+
+    (void)memcpy(&f32Value, &u32Raw, sizeof(f32Value));
+    return f32Value;
+}
+
+uint16_t prvCrc16CcittFalse(const uint8_t *pu8Data, uint16_t u16Length)
+{
+    uint16_t u16Crc = 0xFFFFU;
+    uint16_t u16Idx;
+    uint8_t u8Bit;
+
+    for (u16Idx = 0U; u16Idx < u16Length; ++u16Idx)
+    {
+        u16Crc ^= static_cast<uint16_t>(static_cast<uint16_t>(pu8Data[u16Idx]) << 8U);
+        for (u8Bit = 0U; u8Bit < 8U; ++u8Bit)
+        {
+            if ((u16Crc & 0x8000U) != 0U)
+            {
+                u16Crc = static_cast<uint16_t>((u16Crc << 1U) ^ 0x1021U);
+            }
+            else
+            {
+                u16Crc <<= 1U;
+            }
+        }
+    }
+
+    return u16Crc;
+}
+
+uint16_t prvReadCrc16Le(const uint8_t *pu8Frame, uint16_t u16CrcOffset)
+{
+    return static_cast<uint16_t>(pu8Frame[u16CrcOffset]) |
+           (static_cast<uint16_t>(pu8Frame[u16CrcOffset + 1U]) << 8U);
+}
 
 struct ts_FakeImuContext
 {
@@ -67,6 +116,12 @@ bool TestUartSend(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext)
     }
 
     return true;
+}
+
+uint32_t TestGetTickMs(void *vpContext)
+{
+    (void)vpContext;
+    return g_u32FakeTxTickMs;
 }
 }  // namespace
 
@@ -123,6 +178,8 @@ TEST(TelemetryTaskTest, StepPacksAndTransmitsWhenValidTopicExists)
 
     sConfig.pfnUartSend = TestUartSend;
     sConfig.vpUartContext = nullptr;
+    sConfig.pfnGetTickMs = TestGetTickMs;
+    sConfig.vpTickContext = nullptr;
     sConfig.pu8TxBuffer = au8TxBuffer;
     sConfig.u16TxBufferLength = sizeof(au8TxBuffer);
 
@@ -130,6 +187,7 @@ TEST(TelemetryTaskTest, StepPacksAndTransmitsWhenValidTopicExists)
     sRawImu.sGyro.f32Y = 8.0F;
     sRawImu.u32TimestampMs = 1234U;
     sRawImu.bIsValid = true;
+    g_u32FakeTxTickMs = 5000U;
 
     Gds_ResetRawImu();
     ASSERT_EQ(Gds_PublishRawImu(&sRawImu), GDS_OK);
@@ -138,10 +196,49 @@ TEST(TelemetryTaskTest, StepPacksAndTransmitsWhenValidTopicExists)
 
     EXPECT_TRUE(g_bUartTxCalled);
     EXPECT_EQ(g_u8TxCallCount, 1U);
+    EXPECT_EQ(g_u16LastLen, TELEMETRY_TASK_FRAME_LENGTH);
     EXPECT_EQ(g_u16LastLen, TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH);
     EXPECT_EQ(g_au8LastFrame[0], TELEMETRY_TASK_SYNC_BYTE_0);
     EXPECT_EQ(g_au8LastFrame[1], TELEMETRY_TASK_SYNC_BYTE_1);
     EXPECT_EQ(g_au8LastFrame[2], TELEMETRY_TASK_MSG_ID_IMU_VEHICLE_STATE);
+    EXPECT_EQ(prvReadU32Le(&g_au8LastFrame[4]), g_u32FakeTxTickMs);
+    EXPECT_EQ(prvReadCrc16Le(g_au8LastFrame,
+                             TELEMETRY_TASK_FRAME_LENGTH - TELEMETRY_TASK_FRAME_CRC_LENGTH),
+              prvCrc16CcittFalse(g_au8LastFrame,
+                                 TELEMETRY_TASK_FRAME_LENGTH - TELEMETRY_TASK_FRAME_CRC_LENGTH));
+}
+
+TEST(TelemetryTaskTest, StepAlwaysTransmitsEvenWhenImuTopicInvalid)
+{
+    ts_TelemetryTaskContext sContext {};
+    ts_TelemetryTaskConfig sConfig {};
+    ts_TopicRawImu sRawImu {};
+    uint8_t au8TxBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH] = {0};
+
+    g_bUartTxCalled = false;
+    g_u8TxCallCount = 0U;
+    (void)memset(g_au8LastFrame, 0, sizeof(g_au8LastFrame));
+
+    sConfig.pfnUartSend = TestUartSend;
+    sConfig.vpUartContext = nullptr;
+    sConfig.pfnGetTickMs = TestGetTickMs;
+    sConfig.vpTickContext = nullptr;
+    sConfig.pu8TxBuffer = au8TxBuffer;
+    sConfig.u16TxBufferLength = sizeof(au8TxBuffer);
+
+    sRawImu.sAccel.f32X = 7.0F;
+    sRawImu.bIsValid = false;
+    g_u32FakeTxTickMs = 3000U;
+
+    Gds_ResetRawImu();
+    ASSERT_EQ(Gds_PublishRawImu(&sRawImu), GDS_OK);
+    ASSERT_EQ(TelemetryTask_Init(&sContext, &sConfig), TELEMETRY_TASK_OK);
+    ASSERT_EQ(TelemetryTask_Step(&sContext), TELEMETRY_TASK_OK);
+
+    EXPECT_EQ(g_u8TxCallCount, 1U);
+    EXPECT_FLOAT_EQ(prvReadF32Le(&g_au8LastFrame[TELEMETRY_TASK_FRAME_HEADER_LENGTH +
+                                                   TELEMETRY_TASK_PACKET_TIMESTAMP_LENGTH]),
+                    7.0F);
 }
 
 TEST(TelemetryTaskTest, StepTransmitsCombinedFrameIncludingEstimatedVehicleState)
@@ -160,6 +257,8 @@ TEST(TelemetryTaskTest, StepTransmitsCombinedFrameIncludingEstimatedVehicleState
 
     sConfig.pfnUartSend = TestUartSend;
     sConfig.vpUartContext = nullptr;
+    sConfig.pfnGetTickMs = TestGetTickMs;
+    sConfig.vpTickContext = nullptr;
     sConfig.pu8TxBuffer = au8TxBuffer;
     sConfig.u16TxBufferLength = sizeof(au8TxBuffer);
 
@@ -167,6 +266,7 @@ TEST(TelemetryTaskTest, StepTransmitsCombinedFrameIncludingEstimatedVehicleState
     sRawImu.sGyro.f32Y = 2.0F;
     sRawImu.u32TimestampMs = 2000U;
     sRawImu.bIsValid = true;
+    g_u32FakeTxTickMs = 9000U;
 
     sVehicleState.f32RollRad = 0.12F;
     sVehicleState.f32PitchRad = 0.34F;
@@ -187,13 +287,20 @@ TEST(TelemetryTaskTest, StepTransmitsCombinedFrameIncludingEstimatedVehicleState
     EXPECT_TRUE(g_bUartTxCalled);
     EXPECT_EQ(g_u8TxCallCount, 1U);
     EXPECT_EQ(g_u8LastMsgId, TELEMETRY_TASK_MSG_ID_IMU_VEHICLE_STATE);
-    EXPECT_EQ(g_u16LastLen, TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH);
+    EXPECT_EQ(g_u16LastLen, TELEMETRY_TASK_FRAME_LENGTH);
     EXPECT_EQ(g_au8LastFrame[0], TELEMETRY_TASK_SYNC_BYTE_0);
     EXPECT_EQ(g_au8LastFrame[1], TELEMETRY_TASK_SYNC_BYTE_1);
     EXPECT_EQ(g_au8LastFrame[2], TELEMETRY_TASK_MSG_ID_IMU_VEHICLE_STATE);
-    EXPECT_EQ(g_au8LastFrame[TELEMETRY_TASK_FRAME_HEADER_LENGTH + TELEMETRY_TASK_IMU_PACKET_LENGTH +
+    EXPECT_EQ(prvReadU32Le(&g_au8LastFrame[4]), g_u32FakeTxTickMs);
+    EXPECT_EQ(g_au8LastFrame[TELEMETRY_TASK_FRAME_HEADER_LENGTH +
+                            TELEMETRY_TASK_PACKET_TIMESTAMP_LENGTH +
+                            TELEMETRY_TASK_IMU_PACKET_LENGTH +
                             TELEMETRY_TASK_VEHICLE_PACKET_LENGTH - 1U],
               1U);
+    EXPECT_EQ(prvReadCrc16Le(g_au8LastFrame,
+                             TELEMETRY_TASK_FRAME_LENGTH - TELEMETRY_TASK_FRAME_CRC_LENGTH),
+              prvCrc16CcittFalse(g_au8LastFrame,
+                                 TELEMETRY_TASK_FRAME_LENGTH - TELEMETRY_TASK_FRAME_CRC_LENGTH));
 }
 
 TEST(GlobalDataSpaceTest, PublishAndReadRejectNullPointers)
