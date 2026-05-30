@@ -79,6 +79,7 @@ TEST(SensorManagerTest, StepPublishesValidImuToGds)
     sImuContext.sSample.sGyro.f32X = 4.0F;
     sImuContext.sSample.sGyro.f32Y = 5.0F;
     sImuContext.sSample.sGyro.f32Z = 6.0F;
+    sImuContext.sSample.f32TempC = 26.5F;
     sImuContext.sSample.u32TimestampMs = 77U;
     sImuContext.sSample.bIsValid = true;
 
@@ -95,6 +96,7 @@ TEST(SensorManagerTest, StepPublishesValidImuToGds)
     EXPECT_TRUE(sReadBack.bIsValid);
     EXPECT_FLOAT_EQ(sReadBack.sAccel.f32X, 1.0F);
     EXPECT_FLOAT_EQ(sReadBack.sGyro.f32Z, 6.0F);
+    EXPECT_FLOAT_EQ(sReadBack.f32TempC, 26.5F);
     EXPECT_EQ(sReadBack.u32TimestampMs, 77U);
 }
 

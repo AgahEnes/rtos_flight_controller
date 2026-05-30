@@ -157,7 +157,7 @@ te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
     sImuPayload.f32GyroXRadS = sRawImu.sGyro.f32X;
     sImuPayload.f32GyroYRadS = sRawImu.sGyro.f32Y;
     sImuPayload.f32GyroZRadS = sRawImu.sGyro.f32Z;
-    sImuPayload.f32TempC = 0.0F;
+    sImuPayload.f32TempC = sRawImu.f32TempC;
 
     u16PacketLength = TelemetryTask_prvPackImu(&sImuPayload,
                                                psContext->sConfig.pu8TxBuffer,

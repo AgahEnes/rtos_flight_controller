@@ -68,6 +68,7 @@ static te_ImuDriverRetCode Mpu6050DdiAdapter_prvReadImu(void *vpContext, ts_Topi
     psRawImu->sGyro.f32X = sMpuData.sGyroRadS.f32X;
     psRawImu->sGyro.f32Y = sMpuData.sGyroRadS.f32Y;
     psRawImu->sGyro.f32Z = sMpuData.sGyroRadS.f32Z;
+    psRawImu->f32TempC = sMpuData.f32TempC;
     psRawImu->u32TimestampMs = sMpuData.u32TimestampMs;
     psRawImu->bIsValid = sMpuData.bValid;
 

@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "sensor_acq_port.h"
+#include "app_platform_port.h"
 
 /* USER CODE END Includes */
 
@@ -122,7 +122,7 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_MUTEX */
   /* DMA flow uses active-low data-ready interrupt from MPU6050. */
-  if (SensorAcqPort_Init(&hi2c1, &huart2) == false)
+  if (AppPlatformPort_Init(&hi2c1, &huart2) == false)
   {
     Error_Handler();
   }
@@ -145,7 +145,7 @@ int main(void)
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  if (SensorAcqPort_CreateTask() == NULL)
+  if (AppPlatformPort_CreateTask() == NULL)
   {
     Error_Handler();
   }
@@ -362,12 +362,12 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-  SensorAcqPort_OnExtiCallback(GPIO_Pin);
+  AppPlatformPort_OnExtiCallback(GPIO_Pin);
 }
 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c)
 {
-  SensorAcqPort_OnI2cMemRxComplete(hi2c);
+  AppPlatformPort_OnI2cMemRxComplete(hi2c);
 }
 
 /* USER CODE END 4 */

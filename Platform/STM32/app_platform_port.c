@@ -1,4 +1,4 @@
-#include "sensor_acq_port.h"
+#include "app_platform_port.h"
 
 #include <string.h>
 
@@ -15,57 +15,36 @@
 #include "sensor_manager.h"
 #include "telemetry_task.h"
 
-#define SENSOR_ACQ_TASK_STACK_WORDS              (512U)
-#define TELEMETRY_TASK_STACK_WORDS               (512U)
-#define SENSOR_ACQ_TASK_PERIOD_MS                (10U)
-#define TELEMETRY_TASK_PERIOD_MS                 (100U)
-#define SENSOR_ACQ_TASK_PRIORITY                 (osPriorityAboveNormal)
-#define TELEMETRY_TASK_PRIORITY                  (osPriorityNormal)
-#define SENSOR_ACQ_BUS_TIMEOUT_MS                (100U)
-#define SENSOR_ACQ_BUS_LOCK_TIMEOUT_MS           (20U)
-#define SENSOR_ACQ_UART_TX_TIMEOUT_MS            (5U)
-#define SENSOR_IMU_DEVICE_COUNT                  (1U)
+#define APP_PLATFORM_SENSOR_TASK_STACK_WORDS      (512U)
+#define APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS   (512U)
+#define APP_PLATFORM_SENSOR_TASK_PERIOD_MS        (10U)
+#define APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS     (100U)
+#define APP_PLATFORM_SENSOR_TASK_PRIORITY         (osPriorityAboveNormal)
+#define APP_PLATFORM_TELEMETRY_TASK_PRIORITY      (osPriorityNormal)
+#define APP_PLATFORM_BUS_TIMEOUT_MS               (100U)
+#define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS          (20U)
+#define APP_PLATFORM_UART_TX_TIMEOUT_MS           (5U)
+#define APP_PLATFORM_IMU_DEVICE_COUNT             (1U)
 
-static I2C_HandleTypeDef *gpxSensorI2cHandle = NULL;
-static UART_HandleTypeDef *gpxSensorUartHandle = NULL;
-static osThreadId_t gxSensorAcqTaskHandle = NULL;
-static osThreadId_t gxTelemetryTaskHandle = NULL;
-static osMutexId_t gxI2cBusMutex = NULL;
+static I2C_HandleTypeDef *gpxPlatformI2cHandle = NULL;
+static UART_HandleTypeDef *gpxPlatformUartHandle = NULL;
+static osThreadId_t gxAppPlatformSensorTaskHandle = NULL;
+static osThreadId_t gxAppPlatformTelemetryTaskHandle = NULL;
+static osMutexId_t gxAppPlatformI2cBusMutex = NULL;
 
 static ts_Mpu6050_Handle gsMpuHandle;
 static ts_Mpu6050_Stm32BusContext gsMpuBusContext;
 static ts_Mpu6050DdiAdapterContext gsMpuDdiContext;
-static ts_ImuDevice gasImuDevices[SENSOR_IMU_DEVICE_COUNT];
+static ts_ImuDevice gasImuDevices[APP_PLATFORM_IMU_DEVICE_COUNT];
 static ts_SensorManagerContext gsSensorManagerContext;
 static ts_TelemetryTaskContext gsTelemetryTaskContext;
 static uint8_t gau8TelemetryTxBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
 
-static StaticTask_t gsSensorAcqTaskCb;
-static StackType_t gau32SensorAcqTaskStack[SENSOR_ACQ_TASK_STACK_WORDS];
-static StaticTask_t gsTelemetryTaskCb;
-static StackType_t gau32TelemetryTaskStack[TELEMETRY_TASK_STACK_WORDS];
-static StaticSemaphore_t gsI2cBusMutexCb;
-
-/**
- * @brief Enables or disables EXTI line for MPU6050 interrupt pin.
- * @param vpContext Unused callback context.
- * @param bEnable true enables IRQ, false disables IRQ.
- * @return DRIVER_OK on success.
- */
-static te_Driver_RetCode SensorAcqPort_prvInterruptPinControl(void *vpContext, bool bEnable)
-{
-    (void)vpContext;
-
-    if (bEnable == true)
-    {
-        HAL_NVIC_EnableIRQ(MPU6050_INT_EXTI_IRQn);
-    }
-    else
-    {
-        HAL_NVIC_DisableIRQ(MPU6050_INT_EXTI_IRQn);
-    }
-    return DRIVER_OK;
-}
+static StaticTask_t gsAppPlatformSensorTaskCb;
+static StackType_t gau32AppPlatformSensorTaskStack[APP_PLATFORM_SENSOR_TASK_STACK_WORDS];
+static StaticTask_t gsAppPlatformTelemetryTaskCb;
+static StackType_t gau32AppPlatformTelemetryTaskStack[APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS];
+static StaticSemaphore_t gsAppPlatformI2cBusMutexCb;
 
 /**
  * @brief Sends telemetry packet over configured UART.
@@ -74,26 +53,26 @@ static te_Driver_RetCode SensorAcqPort_prvInterruptPinControl(void *vpContext, b
  * @param vpContext Unused callback context.
  * @return true on successful UART transmission.
  */
-static bool SensorAcqPort_prvUartSend(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext)
+static bool AppPlatformPort_prvUartSend(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext)
 {
     (void)vpContext;
 
-    if ((gpxSensorUartHandle == NULL) || (pu8Data == NULL) || (u16Length == 0U))
+    if ((gpxPlatformUartHandle == NULL) || (pu8Data == NULL) || (u16Length == 0U))
     {
         return false;
     }
 
-    return (HAL_UART_Transmit(gpxSensorUartHandle,
+    return (HAL_UART_Transmit(gpxPlatformUartHandle,
                               (uint8_t *)pu8Data,
                               u16Length,
-                              SENSOR_ACQ_UART_TX_TIMEOUT_MS) == HAL_OK);
+                              APP_PLATFORM_UART_TX_TIMEOUT_MS) == HAL_OK);
 }
 
 /**
  * @brief Initializes MPU6050 open configuration and starts async DMA worker.
  * @return true on success, false on failure.
  */
-static bool SensorAcqPort_prvInitMpu6050(void)
+static bool AppPlatformPort_prvInitMpu6050(void)
 {
     ts_Mpu6050_OpenConfig sOpenConfig;
     ts_BusInterface sBusIf;
@@ -111,8 +90,8 @@ static bool SensorAcqPort_prvInitMpu6050(void)
     (void)memset(&gsTelemetryTaskContext, 0, sizeof(gsTelemetryTaskContext));
     (void)memset(&sOpenConfig, 0, sizeof(sOpenConfig));
 
-    gsMpuBusContext.pxI2cHandle = gpxSensorI2cHandle;
-    gsMpuBusContext.xBusMutex = gxI2cBusMutex;
+    gsMpuBusContext.pxI2cHandle = gpxPlatformI2cHandle;
+    gsMpuBusContext.xBusMutex = gxAppPlatformI2cBusMutex;
 
     eRet = Mpu6050_Stm32Hal_FillBusInterface(&sBusIf, &gsMpuBusContext);
     if (eRet != DRIVER_OK)
@@ -131,13 +110,11 @@ static bool SensorAcqPort_prvInitMpu6050(void)
     }
 
     sOpenConfig.u8I2cAddress = MPU6050_I2C_ADDR_AD0_LOW;
-    sOpenConfig.u32BusTimeoutMs = SENSOR_ACQ_BUS_TIMEOUT_MS;
-    sOpenConfig.u32BusLockTimeoutMs = SENSOR_ACQ_BUS_LOCK_TIMEOUT_MS;
+    sOpenConfig.u32BusTimeoutMs = APP_PLATFORM_BUS_TIMEOUT_MS;
+    sOpenConfig.u32BusLockTimeoutMs = APP_PLATFORM_BUS_LOCK_TIMEOUT_MS;
     sOpenConfig.sBusInterface = sBusIf;
     sOpenConfig.sLockInterface = sLockIf;
     sOpenConfig.sTimingInterface = sTimingIf;
-    sOpenConfig.pfnInterruptPinControl = SensorAcqPort_prvInterruptPinControl;
-    sOpenConfig.vpInterruptCtx = NULL;
 
     eRet = Mpu6050_Open(&gsMpuHandle, &sOpenConfig);
     if (eRet != DRIVER_OK)
@@ -164,12 +141,6 @@ static bool SensorAcqPort_prvInitMpu6050(void)
         return false;
     }
 
-    eRet = Mpu6050_Ioctl(&gsMpuHandle, MPU6050_IOCTL_ENABLE_INTERRUPT_PIN, NULL);
-    if (eRet != DRIVER_OK)
-    {
-        return false;
-    }
-
     return true;
 }
 
@@ -177,7 +148,7 @@ static bool SensorAcqPort_prvInitMpu6050(void)
  * @brief Initializes app-layer objects: DDI binding, manager, and telemetry task.
  * @return true on success, false on failure.
  */
-static bool SensorAcqPort_prvInitAppLayers(void)
+static bool AppPlatformPort_prvInitAppLayers(void)
 {
     ts_SensorManagerConfig sSensorManagerConfig;
     ts_TelemetryTaskConfig sTelemetryConfig;
@@ -192,7 +163,7 @@ static bool SensorAcqPort_prvInitAppLayers(void)
         return false;
     }
 
-    sTelemetryConfig.pfnUartSend = SensorAcqPort_prvUartSend;
+    sTelemetryConfig.pfnUartSend = AppPlatformPort_prvUartSend;
     sTelemetryConfig.vpUartContext = NULL;
     sTelemetryConfig.pu8TxBuffer = gau8TelemetryTxBuffer;
     sTelemetryConfig.u16TxBufferLength = sizeof(gau8TelemetryTxBuffer);
@@ -209,7 +180,7 @@ static bool SensorAcqPort_prvInitAppLayers(void)
  * @param pvArgument Unused thread argument.
  * @retval None.
  */
-static void SensorAcqPort_prvSensorTask(void *pvArgument)
+static void AppPlatformPort_prvSensorTask(void *pvArgument)
 {
     uint32_t u32NextWakeTick;
     te_SensorManagerRetCode eStepRet;
@@ -222,7 +193,7 @@ static void SensorAcqPort_prvSensorTask(void *pvArgument)
         eStepRet = SensorManager_Step(&gsSensorManagerContext);
         (void)eStepRet;
 
-        u32NextWakeTick += SENSOR_ACQ_TASK_PERIOD_MS;
+        u32NextWakeTick += APP_PLATFORM_SENSOR_TASK_PERIOD_MS;
         (void)osDelayUntil(u32NextWakeTick);
     }
 }
@@ -232,7 +203,7 @@ static void SensorAcqPort_prvSensorTask(void *pvArgument)
  * @param pvArgument Unused thread argument.
  * @retval None.
  */
-static void SensorAcqPort_prvTelemetryTask(void *pvArgument)
+static void AppPlatformPort_prvTelemetryTask(void *pvArgument)
 {
     uint32_t u32NextWakeTick;
     te_TelemetryTaskRetCode eStepRet;
@@ -245,18 +216,18 @@ static void SensorAcqPort_prvTelemetryTask(void *pvArgument)
         eStepRet = TelemetryTask_Step(&gsTelemetryTaskContext);
         (void)eStepRet;
 
-        u32NextWakeTick += TELEMETRY_TASK_PERIOD_MS;
+        u32NextWakeTick += APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS;
         (void)osDelayUntil(u32NextWakeTick);
     }
 }
 
-bool SensorAcqPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle)
+bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle)
 {
     const osMutexAttr_t xI2cMutexAttr =
     {
         .name = "i2c1_bus_mtx",
-        .cb_mem = &gsI2cBusMutexCb,
-        .cb_size = sizeof(gsI2cBusMutexCb)
+        .cb_mem = &gsAppPlatformI2cBusMutexCb,
+        .cb_size = sizeof(gsAppPlatformI2cBusMutexCb)
     };
 
     if ((pxI2cHandle == NULL) || (pxUartHandle == NULL))
@@ -264,69 +235,69 @@ bool SensorAcqPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUa
         return false;
     }
 
-    gpxSensorI2cHandle = pxI2cHandle;
-    gpxSensorUartHandle = pxUartHandle;
+    gpxPlatformI2cHandle = pxI2cHandle;
+    gpxPlatformUartHandle = pxUartHandle;
 
-    if (gxI2cBusMutex == NULL)
+    if (gxAppPlatformI2cBusMutex == NULL)
     {
-        gxI2cBusMutex = osMutexNew(&xI2cMutexAttr);
+        gxAppPlatformI2cBusMutex = osMutexNew(&xI2cMutexAttr);
     }
-    if (gxI2cBusMutex == NULL)
-    {
-        return false;
-    }
-
-    if (SensorAcqPort_prvInitMpu6050() == false)
+    if (gxAppPlatformI2cBusMutex == NULL)
     {
         return false;
     }
 
-    return SensorAcqPort_prvInitAppLayers();
+    if (AppPlatformPort_prvInitMpu6050() == false)
+    {
+        return false;
+    }
+
+    return AppPlatformPort_prvInitAppLayers();
 }
 
 /**
- * @brief Creates and starts static periodic Sensor Acquisition task.
- * @return Created task handle; NULL if task creation fails.
+ * @brief Creates and starts static periodic sensor and telemetry tasks.
+ * @return Created sensor task handle; NULL if task creation fails.
  */
-osThreadId_t SensorAcqPort_CreateTask(void)
+osThreadId_t AppPlatformPort_CreateTask(void)
 {
     const osThreadAttr_t xSensorTaskAttr =
     {
-        .name = "sensor_acq",
-        .priority = SENSOR_ACQ_TASK_PRIORITY,
-        .stack_mem = gau32SensorAcqTaskStack,
-        .stack_size = sizeof(gau32SensorAcqTaskStack),
-        .cb_mem = &gsSensorAcqTaskCb,
-        .cb_size = sizeof(gsSensorAcqTaskCb)
+        .name = "app_platform_sensor",
+        .priority = APP_PLATFORM_SENSOR_TASK_PRIORITY,
+        .stack_mem = gau32AppPlatformSensorTaskStack,
+        .stack_size = sizeof(gau32AppPlatformSensorTaskStack),
+        .cb_mem = &gsAppPlatformSensorTaskCb,
+        .cb_size = sizeof(gsAppPlatformSensorTaskCb)
     };
     const osThreadAttr_t xTelemetryTaskAttr =
     {
-        .name = "telemetry_tx",
-        .priority = TELEMETRY_TASK_PRIORITY,
-        .stack_mem = gau32TelemetryTaskStack,
-        .stack_size = sizeof(gau32TelemetryTaskStack),
-        .cb_mem = &gsTelemetryTaskCb,
-        .cb_size = sizeof(gsTelemetryTaskCb)
+        .name = "app_platform_telemetry",
+        .priority = APP_PLATFORM_TELEMETRY_TASK_PRIORITY,
+        .stack_mem = gau32AppPlatformTelemetryTaskStack,
+        .stack_size = sizeof(gau32AppPlatformTelemetryTaskStack),
+        .cb_mem = &gsAppPlatformTelemetryTaskCb,
+        .cb_size = sizeof(gsAppPlatformTelemetryTaskCb)
     };
 
-    if (gxSensorAcqTaskHandle != NULL)
+    if (gxAppPlatformSensorTaskHandle != NULL)
     {
-        return gxSensorAcqTaskHandle;
+        return gxAppPlatformSensorTaskHandle;
     }
 
-    gxSensorAcqTaskHandle = osThreadNew(SensorAcqPort_prvSensorTask, NULL, &xSensorTaskAttr);
-    if (gxSensorAcqTaskHandle == NULL)
-    {
-        return NULL;
-    }
-
-    gxTelemetryTaskHandle = osThreadNew(SensorAcqPort_prvTelemetryTask, NULL, &xTelemetryTaskAttr);
-    if (gxTelemetryTaskHandle == NULL)
+    gxAppPlatformSensorTaskHandle = osThreadNew(AppPlatformPort_prvSensorTask, NULL, &xSensorTaskAttr);
+    if (gxAppPlatformSensorTaskHandle == NULL)
     {
         return NULL;
     }
 
-    return gxSensorAcqTaskHandle;
+    gxAppPlatformTelemetryTaskHandle = osThreadNew(AppPlatformPort_prvTelemetryTask, NULL, &xTelemetryTaskAttr);
+    if (gxAppPlatformTelemetryTaskHandle == NULL)
+    {
+        return NULL;
+    }
+
+    return gxAppPlatformSensorTaskHandle;
 }
 
 /**
@@ -334,7 +305,7 @@ osThreadId_t SensorAcqPort_CreateTask(void)
  * @param u16GpioPin Input GPIO identifier.
  * @retval None
  */
-void SensorAcqPort_OnExtiCallback(uint16_t u16GpioPin)
+void AppPlatformPort_OnExtiCallback(uint16_t u16GpioPin)
 {
     if (u16GpioPin == MPU6050_INT_Pin)
     {
@@ -347,7 +318,7 @@ void SensorAcqPort_OnExtiCallback(uint16_t u16GpioPin)
  * @param pxI2cHandle Input I2C handle.
  * @retval None
  */
-void SensorAcqPort_OnI2cMemRxComplete(I2C_HandleTypeDef *pxI2cHandle)
+void AppPlatformPort_OnI2cMemRxComplete(I2C_HandleTypeDef *pxI2cHandle)
 {
     Mpu6050_Stm32Hal_OnDmaComplete(pxI2cHandle, &gsMpuBusContext);
 }

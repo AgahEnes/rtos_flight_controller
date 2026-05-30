@@ -1,5 +1,5 @@
-#ifndef PLATFORM_STM32_SENSOR_ACQ_PORT_H_
-#define PLATFORM_STM32_SENSOR_ACQ_PORT_H_
+#ifndef PLATFORM_STM32_APP_PLATFORM_PORT_H_
+#define PLATFORM_STM32_APP_PLATFORM_PORT_H_
 
 #ifdef __cplusplus
 extern "C" {
@@ -12,33 +12,33 @@ extern "C" {
 #include "cmsis_os2.h"
 
 /**
- * @brief Initializes sensor acquisition platform layer.
+ * @brief Initializes application platform layer.
  * @param pxI2cHandle I2C handle used by MPU6050 driver.
  * @param pxUartHandle UART handle used for telemetry transmission.
  * @return true on success, false on initialization failure.
  */
-bool SensorAcqPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle);
+bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle);
 
 /**
- * @brief Creates statically allocated 10ms acquisition thread.
- * @return Thread handle on success, NULL on failure.
+ * @brief Creates statically allocated sensor and telemetry threads.
+ * @return Sensor thread handle on success, NULL on failure.
  */
-osThreadId_t SensorAcqPort_CreateTask(void);
+osThreadId_t AppPlatformPort_CreateTask(void);
 
 /**
  * @brief EXTI callback bridge for MPU6050 INT pin.
  * @param u16GpioPin GPIO pin identifier passed by HAL.
  */
-void SensorAcqPort_OnExtiCallback(uint16_t u16GpioPin);
+void AppPlatformPort_OnExtiCallback(uint16_t u16GpioPin);
 
 /**
  * @brief I2C memory RX complete callback bridge for MPU6050 DMA reads.
  * @param pxI2cHandle I2C handle passed by HAL.
  */
-void SensorAcqPort_OnI2cMemRxComplete(I2C_HandleTypeDef *pxI2cHandle);
+void AppPlatformPort_OnI2cMemRxComplete(I2C_HandleTypeDef *pxI2cHandle);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* PLATFORM_STM32_SENSOR_ACQ_PORT_H_ */
+#endif /* PLATFORM_STM32_APP_PLATFORM_PORT_H_ */

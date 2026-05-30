@@ -19,6 +19,7 @@ typedef struct
 {
     ts_Vector3d sAccel;
     ts_Vector3d sGyro;
+    float f32TempC;
     uint32_t u32TimestampMs;
     bool bIsValid;
 } ts_TopicRawImu;

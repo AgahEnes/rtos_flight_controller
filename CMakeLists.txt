@@ -54,7 +54,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${APP_DIR}/SensorAcq/sensor_manager.c
     ${APP_DIR}/Telemetry/telemetry_task.c
     ${PLATFORM_DIR}/STM32/mpu6050_ddi_adapter.c
-    ${PLATFORM_DIR}/STM32/sensor_acq_port.c
+    ${PLATFORM_DIR}/STM32/app_platform_port.c
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
