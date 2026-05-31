@@ -6,6 +6,8 @@ extern "C" {
 }
 
 namespace {
+constexpr float kTwoPiRad = 6.28318530717958647692F;
+
 ts_TopicRawImu CreateValidImuSample(uint32_t u32TimestampMs)
 {
     ts_TopicRawImu sRawImu {};
@@ -30,6 +32,7 @@ ts_NavConfig CreateDefaultConfig(void)
     sConfig.f32DtS = NAV_CFG_DEFAULT_DT_S;
     sConfig.f32ZeroEpsilon = NAV_CFG_ZERO_EPSILON;
     sConfig.u8StuckThresholdCycles = NAV_CFG_STUCK_THRESHOLD_CYCLES;
+    sConfig.sInitialAttitude.u8IsValid = 0U;
 
     return sConfig;
 }
@@ -167,6 +170,44 @@ TEST(NavigationSubsystemTest, YawDeadReckoningIntegratesGyroZ)
     ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
     ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
     EXPECT_NEAR(sVehicleState.f32YawRad, 0.01F, 1.0e-6F);
+}
+
+TEST(NavigationSubsystemTest, InitSeedsInitialAttitudeWhenConfigRequestsIt)
+{
+    ts_NavContext sContext {};
+    ts_NavConfig sConfig = CreateDefaultConfig();
+
+    sConfig.sInitialAttitude.f32RollRad = -0.10F;
+    sConfig.sInitialAttitude.f32PitchRad = 0.20F;
+    sConfig.sInitialAttitude.f32YawRad = kTwoPiRad + 0.30F;
+    sConfig.sInitialAttitude.u8IsValid = 1U;
+
+    ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
+    EXPECT_NEAR(sContext.sEstimatedState.f32RollRad, kTwoPiRad - 0.10F, 1.0e-6F);
+    EXPECT_NEAR(sContext.sEstimatedState.f32PitchRad, 0.20F, 1.0e-6F);
+    EXPECT_NEAR(sContext.sEstimatedState.f32YawRad, 0.30F, 1.0e-6F);
+    EXPECT_TRUE(sContext.sEstimatedState.bIsEstimated);
+}
+
+TEST(NavigationSubsystemTest, YawIntegrationWrapsToZeroToTwoPiRange)
+{
+    ts_NavContext sContext {};
+    ts_NavConfig sConfig = CreateDefaultConfig();
+    ts_TopicRawImu sRawImu = CreateValidImuSample(710U);
+    ts_TopicVehicleState sVehicleState {};
+
+    sConfig.f32Alpha = 1.0F;
+    sConfig.sInitialAttitude.f32RollRad = 0.0F;
+    sConfig.sInitialAttitude.f32PitchRad = 0.0F;
+    sConfig.sInitialAttitude.f32YawRad = kTwoPiRad - 0.002F;
+    sConfig.sInitialAttitude.u8IsValid = 1U;
+    sRawImu.sGyro.f32X = 0.0F;
+    sRawImu.sGyro.f32Y = 0.0F;
+    sRawImu.sGyro.f32Z = 1.0F;
+
+    ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+    EXPECT_NEAR(sVehicleState.f32YawRad, 0.008F, 1.0e-6F);
 }
 
 TEST(NavigationSubsystemTest, IntegrationPathReadsImuAndPublishesVehicleState)

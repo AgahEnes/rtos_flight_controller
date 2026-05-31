@@ -19,7 +19,7 @@ p.addParameter("IdlePauseSec", 0.001, @(x)isnumeric(x) && isscalar(x) && x >= 0)
 p.addParameter("EnableConsole", true, @(x)islogical(x) || isnumeric(x));
 p.addParameter("PrintHz", 1, @(x)isnumeric(x) && isscalar(x) && x > 0);
 p.addParameter("ExpectedSeqHz", 10, @(x)isnumeric(x) && isscalar(x) && x > 0);
-p.addParameter("SeqCheckToleranceFrames", 0, @(x)isnumeric(x) && isscalar(x) && x >= 0);
+p.addParameter("SeqCheckToleranceFrames", 0.5, @(x)isnumeric(x) && isscalar(x) && x >= 0);
 p.parse(varargin{:});
 cfg = p.Results;
 

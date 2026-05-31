@@ -37,6 +37,18 @@ void AppPlatformPort_OnExtiCallback(uint16_t u16GpioPin);
  */
 void AppPlatformPort_OnI2cMemRxComplete(I2C_HandleTypeDef *pxI2cHandle);
 
+/**
+ * @brief UART TX complete callback bridge for telemetry UART DMA.
+ * @param pxUartHandle UART handle passed by HAL.
+ */
+void AppPlatformPort_OnUartTxComplete(UART_HandleTypeDef *pxUartHandle);
+
+/**
+ * @brief UART error callback bridge for telemetry UART DMA.
+ * @param pxUartHandle UART handle passed by HAL.
+ */
+void AppPlatformPort_OnUartError(UART_HandleTypeDef *pxUartHandle);
+
 #ifdef __cplusplus
 }
 #endif

@@ -27,8 +27,9 @@
 #define APP_PLATFORM_NAV_TASK_PRIORITY            (osPriorityAboveNormal)
 #define APP_PLATFORM_BUS_TIMEOUT_MS               (100U)
 #define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS          (20U)
-#define APP_PLATFORM_UART_TX_TIMEOUT_MS           (20U)
 #define APP_PLATFORM_IMU_DEVICE_COUNT             (1U)
+#define APP_PLATFORM_UART_DMA_TOKEN_MAX_COUNT     (1U)
+#define APP_PLATFORM_UART_DMA_TOKEN_INITIAL_COUNT (1U)
 
 static I2C_HandleTypeDef *gpxPlatformI2cHandle = NULL;
 static UART_HandleTypeDef *gpxPlatformUartHandle = NULL;
@@ -36,6 +37,7 @@ static osThreadId_t gxAppPlatformSensorTaskHandle = NULL;
 static osThreadId_t gxAppPlatformTelemetryTaskHandle = NULL;
 static osThreadId_t gxAppPlatformNavTaskHandle = NULL;
 static osMutexId_t gxAppPlatformI2cBusMutex = NULL;
+static osSemaphoreId_t gxAppPlatformUartTxDmaToken = NULL;
 
 static ts_Mpu6050_Handle gsMpuHandle;
 static ts_Mpu6050_Stm32BusContext gsMpuBusContext;
@@ -45,6 +47,7 @@ static ts_SensorManagerContext gsSensorManagerContext;
 static ts_TelemetryTaskContext gsTelemetryTaskContext;
 static ts_NavContext gsNavContext;
 static uint8_t gau8TelemetryTxBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
+static uint8_t gau8TelemetryTxDmaBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
 
 static StaticTask_t gsAppPlatformSensorTaskCb;
 static StackType_t gau32AppPlatformSensorTaskStack[APP_PLATFORM_SENSOR_TASK_STACK_WORDS];
@@ -53,6 +56,11 @@ static StackType_t gau32AppPlatformTelemetryTaskStack[APP_PLATFORM_TELEMETRY_TAS
 static StaticTask_t gsAppPlatformNavTaskCb;
 static StackType_t gau32AppPlatformNavTaskStack[APP_PLATFORM_NAV_TASK_STACK_WORDS];
 static StaticSemaphore_t gsAppPlatformI2cBusMutexCb;
+static StaticSemaphore_t gsAppPlatformUartTxDmaTokenCb;
+
+static volatile uint32_t gu32TelemetryTxDmaDropCount = 0U;
+static volatile uint32_t gu32TelemetryTxDmaStartFailCount = 0U;
+static volatile uint32_t gu32TelemetryTxDmaErrorIsrCount = 0U;
 
 /**
  * @brief Returns RTOS kernel tick count in milliseconds for telemetry timestamps.
@@ -73,19 +81,39 @@ static uint32_t AppPlatformPort_prvGetTickMs(void *vpContext)
  * @param vpContext Unused callback context.
  * @return true on successful UART transmission.
  */
-static bool AppPlatformPort_prvUartSend(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext)
+static bool AppPlatformPort_prvUartDmaSend(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext)
 {
+    HAL_StatusTypeDef eHalRet;
+
     (void)vpContext;
 
-    if ((gpxPlatformUartHandle == NULL) || (pu8Data == NULL) || (u16Length == 0U))
+    if ((gpxPlatformUartHandle == NULL) ||
+        (gxAppPlatformUartTxDmaToken == NULL) ||
+        (pu8Data == NULL) ||
+        (u16Length == 0U) ||
+        (u16Length > TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH))
     {
         return false;
     }
 
-    return (HAL_UART_Transmit(gpxPlatformUartHandle,
-                              (uint8_t *)pu8Data,
-                              u16Length,
-                              APP_PLATFORM_UART_TX_TIMEOUT_MS) == HAL_OK);
+    if (osSemaphoreAcquire(gxAppPlatformUartTxDmaToken, 0U) != osOK)
+    {
+        gu32TelemetryTxDmaDropCount++;
+        return false;
+    }
+
+    (void)memcpy(gau8TelemetryTxDmaBuffer, pu8Data, (size_t)u16Length);
+    eHalRet = HAL_UART_Transmit_DMA(gpxPlatformUartHandle,
+                                    gau8TelemetryTxDmaBuffer,
+                                    u16Length);
+    if (eHalRet != HAL_OK)
+    {
+        gu32TelemetryTxDmaStartFailCount++;
+        (void)osSemaphoreRelease(gxAppPlatformUartTxDmaToken);
+        return false;
+    }
+
+    return true;
 }
 
 /**
@@ -174,8 +202,13 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     ts_TelemetryTaskConfig sTelemetryConfig;
     ts_NavConfig sNavConfig;
 
+    (void)memset(&sNavConfig, 0, sizeof(sNavConfig));
+    (void)memset(&sTelemetryConfig, 0, sizeof(sTelemetryConfig));
+    (void)memset(&sSensorManagerConfig, 0, sizeof(sSensorManagerConfig));
+    
     Gds_ResetRawImu();
     Gds_ResetVehicleState();
+    Gds_ResetImuCalibration();
     Mpu6050DdiAdapter_Bind(&gasImuDevices[0], &gsMpuDdiContext, &gsMpuHandle);
 
     sSensorManagerConfig.psImuDevices = gasImuDevices;
@@ -194,7 +227,7 @@ static bool AppPlatformPort_prvInitAppLayers(void)
         return false;
     }
 
-    sTelemetryConfig.pfnUartSend = AppPlatformPort_prvUartSend;
+    sTelemetryConfig.pfnUartSend = AppPlatformPort_prvUartDmaSend;
     sTelemetryConfig.vpUartContext = NULL;
     sTelemetryConfig.pfnGetTickMs = AppPlatformPort_prvGetTickMs;
     sTelemetryConfig.vpTickContext = NULL;
@@ -295,6 +328,12 @@ bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *px
         .cb_mem = &gsAppPlatformI2cBusMutexCb,
         .cb_size = sizeof(gsAppPlatformI2cBusMutexCb)
     };
+    const osSemaphoreAttr_t xUartTxDmaTokenAttr =
+    {
+        .name = "uart2_tx_dma_token",
+        .cb_mem = &gsAppPlatformUartTxDmaTokenCb,
+        .cb_size = sizeof(gsAppPlatformUartTxDmaTokenCb)
+    };
 
     if ((pxI2cHandle == NULL) || (pxUartHandle == NULL))
     {
@@ -309,6 +348,17 @@ bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *px
         gxAppPlatformI2cBusMutex = osMutexNew(&xI2cMutexAttr);
     }
     if (gxAppPlatformI2cBusMutex == NULL)
+    {
+        return false;
+    }
+
+    if (gxAppPlatformUartTxDmaToken == NULL)
+    {
+        gxAppPlatformUartTxDmaToken = osSemaphoreNew(APP_PLATFORM_UART_DMA_TOKEN_MAX_COUNT,
+                                                     APP_PLATFORM_UART_DMA_TOKEN_INITIAL_COUNT,
+                                                     &xUartTxDmaTokenAttr);
+    }
+    if (gxAppPlatformUartTxDmaToken == NULL)
     {
         return false;
     }
@@ -402,4 +452,35 @@ void AppPlatformPort_OnExtiCallback(uint16_t u16GpioPin)
 void AppPlatformPort_OnI2cMemRxComplete(I2C_HandleTypeDef *pxI2cHandle)
 {
     Mpu6050_Stm32Hal_OnDmaComplete(pxI2cHandle, &gsMpuBusContext);
+}
+
+/**
+ * @brief Forwards HAL UART TX complete callback for telemetry DMA path.
+ * @param pxUartHandle UART handle from HAL.
+ * @retval None
+ */
+void AppPlatformPort_OnUartTxComplete(UART_HandleTypeDef *pxUartHandle)
+{
+    if ((pxUartHandle != NULL) &&
+        (pxUartHandle == gpxPlatformUartHandle) &&
+        (gxAppPlatformUartTxDmaToken != NULL))
+    {
+        (void)osSemaphoreRelease(gxAppPlatformUartTxDmaToken);
+    }
+}
+
+/**
+ * @brief Forwards HAL UART error callback for telemetry DMA path.
+ * @param pxUartHandle UART handle from HAL.
+ * @retval None
+ */
+void AppPlatformPort_OnUartError(UART_HandleTypeDef *pxUartHandle)
+{
+    if ((pxUartHandle != NULL) &&
+        (pxUartHandle == gpxPlatformUartHandle) &&
+        (gxAppPlatformUartTxDmaToken != NULL))
+    {
+        gu32TelemetryTxDmaErrorIsrCount++;
+        (void)osSemaphoreRelease(gxAppPlatformUartTxDmaToken);
+    }
 }

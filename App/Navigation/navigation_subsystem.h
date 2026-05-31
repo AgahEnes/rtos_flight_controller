@@ -34,10 +34,19 @@ typedef enum
 
 typedef struct
 {
+    float f32RollRad;
+    float f32PitchRad;
+    float f32YawRad;
+    uint8_t u8IsValid;
+} ts_NavInitialAttitude;
+
+typedef struct
+{
     float f32Alpha;
     float f32DtS;
     float f32ZeroEpsilon;
     uint8_t u8StuckThresholdCycles;
+    ts_NavInitialAttitude sInitialAttitude;
 } ts_NavConfig;
 
 typedef struct

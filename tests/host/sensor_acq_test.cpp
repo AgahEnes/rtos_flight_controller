@@ -67,6 +67,9 @@ struct ts_FakeImuContext
 {
     te_ImuDriverRetCode eInitRet;
     te_ImuDriverRetCode eReadRet;
+    te_ImuDriverRetCode eSetBiasRet;
+    uint32_t u32SetBiasCallCount;
+    ts_TopicImuCalibration sLastCalibration;
     ts_TopicRawImu sSample;
 };
 
@@ -99,6 +102,27 @@ te_ImuDriverRetCode FakeImu_Read(void *vpContext, ts_TopicRawImu *psRawImu)
     return IMU_DRIVER_OK;
 }
 
+te_ImuDriverRetCode FakeImu_SetBias(void *vpContext, const ts_TopicImuCalibration *psCalibration)
+{
+    ts_FakeImuContext *psContext = static_cast<ts_FakeImuContext *>(vpContext);
+
+    if ((psContext == nullptr) || (psCalibration == nullptr))
+    {
+        return IMU_DRIVER_ERR_ARG;
+    }
+    if (psContext->eSetBiasRet != IMU_DRIVER_OK)
+    {
+        return psContext->eSetBiasRet;
+    }
+    if (psContext->u32SetBiasCallCount < UINT32_MAX)
+    {
+        psContext->u32SetBiasCallCount++;
+    }
+    psContext->sLastCalibration = *psCalibration;
+
+    return IMU_DRIVER_OK;
+}
+
 bool TestUartSend(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext)
 {
     (void)vpContext;
@@ -127,7 +151,7 @@ uint32_t TestGetTickMs(void *vpContext)
 
 TEST(SensorManagerTest, StepPublishesValidImuToGds)
 {
-    static const ts_ImuDriverVTable ksVtable = {FakeImu_Init, FakeImu_Read};
+    static const ts_ImuDriverVTable ksVtable = {FakeImu_Init, FakeImu_Read, FakeImu_SetBias};
     ts_SensorManagerContext sContext {};
     ts_SensorManagerConfig sConfig {};
     ts_ImuDevice sImuDevice {};
@@ -136,6 +160,7 @@ TEST(SensorManagerTest, StepPublishesValidImuToGds)
 
     sImuContext.eInitRet = IMU_DRIVER_OK;
     sImuContext.eReadRet = IMU_DRIVER_OK;
+    sImuContext.eSetBiasRet = IMU_DRIVER_OK;
     sImuContext.sSample.sAccel.f32X = 1.0F;
     sImuContext.sSample.sAccel.f32Y = 2.0F;
     sImuContext.sSample.sAccel.f32Z = 3.0F;
@@ -161,6 +186,55 @@ TEST(SensorManagerTest, StepPublishesValidImuToGds)
     EXPECT_FLOAT_EQ(sReadBack.sGyro.f32Z, 6.0F);
     EXPECT_FLOAT_EQ(sReadBack.f32TempC, 26.5F);
     EXPECT_EQ(sReadBack.u32TimestampMs, 77U);
+}
+
+TEST(SensorManagerTest, StepAppliesOnlyFreshCalibrationCounters)
+{
+    static const ts_ImuDriverVTable ksVtable = {FakeImu_Init, FakeImu_Read, FakeImu_SetBias};
+    ts_SensorManagerContext sContext {};
+    ts_SensorManagerConfig sConfig {};
+    ts_ImuDevice sImuDevice {};
+    ts_FakeImuContext sImuContext {};
+    ts_TopicImuCalibration sCalibration {};
+
+    sImuContext.eInitRet = IMU_DRIVER_OK;
+    sImuContext.eReadRet = IMU_DRIVER_OK;
+    sImuContext.eSetBiasRet = IMU_DRIVER_OK;
+    sImuContext.sSample.sAccel.f32Z = 9.81F;
+    sImuContext.sSample.bIsValid = true;
+    sImuContext.sSample.u32TimestampMs = 100U;
+
+    sImuDevice.psVTable = &ksVtable;
+    sImuDevice.vpContext = &sImuContext;
+    sConfig.psImuDevices = &sImuDevice;
+    sConfig.u8ImuDeviceCount = 1U;
+
+    Gds_ResetRawImu();
+    Gds_ResetImuCalibration();
+    ASSERT_EQ(SensorManager_Init(&sContext, &sConfig), SENSOR_MANAGER_OK);
+
+    sCalibration.sAccelBiasMps2.f32X = 0.10F;
+    sCalibration.sGyroBiasRadS.f32Y = 0.20F;
+    sCalibration.u32TimestampMs = 101U;
+    sCalibration.u32UpdateCounter = 1U;
+    sCalibration.bIsValid = true;
+    ASSERT_EQ(Gds_PublishImuCalibration(&sCalibration), GDS_OK);
+
+    ASSERT_EQ(SensorManager_Step(&sContext), SENSOR_MANAGER_OK);
+    EXPECT_EQ(sImuContext.u32SetBiasCallCount, 1U);
+    EXPECT_EQ(sImuContext.sLastCalibration.u32UpdateCounter, 1U);
+
+    sImuContext.sSample.u32TimestampMs = 110U;
+    ASSERT_EQ(SensorManager_Step(&sContext), SENSOR_MANAGER_OK);
+    EXPECT_EQ(sImuContext.u32SetBiasCallCount, 1U);
+
+    sCalibration.u32UpdateCounter = 2U;
+    sCalibration.sGyroBiasRadS.f32Z = 0.30F;
+    ASSERT_EQ(Gds_PublishImuCalibration(&sCalibration), GDS_OK);
+    sImuContext.sSample.u32TimestampMs = 120U;
+    ASSERT_EQ(SensorManager_Step(&sContext), SENSOR_MANAGER_OK);
+    EXPECT_EQ(sImuContext.u32SetBiasCallCount, 2U);
+    EXPECT_FLOAT_EQ(sImuContext.sLastCalibration.sGyroBiasRadS.f32Z, 0.30F);
 }
 
 TEST(TelemetryTaskTest, StepPacksAndTransmitsWhenValidTopicExists)
@@ -341,4 +415,36 @@ TEST(GlobalDataSpaceVehicleStateTest, PublishAndReadRoundTripAndNullChecks)
     EXPECT_FLOAT_EQ(sReadBack.f32YawRateRadS, sVehicleState.f32YawRateRadS);
     EXPECT_EQ(sReadBack.u32TimestampMs, sVehicleState.u32TimestampMs);
     EXPECT_EQ(sReadBack.bIsEstimated, true);
+}
+
+TEST(GlobalDataSpaceCalibrationTest, PublishAndReadRoundTripAndNullChecks)
+{
+    ts_TopicImuCalibration sCalibration {};
+    ts_TopicImuCalibration sReadBack {};
+
+    sCalibration.sAccelBiasMps2.f32X = 0.11F;
+    sCalibration.sAccelBiasMps2.f32Y = -0.22F;
+    sCalibration.sAccelBiasMps2.f32Z = 0.33F;
+    sCalibration.sGyroBiasRadS.f32X = 0.44F;
+    sCalibration.sGyroBiasRadS.f32Y = -0.55F;
+    sCalibration.sGyroBiasRadS.f32Z = 0.66F;
+    sCalibration.u32TimestampMs = 567U;
+    sCalibration.u32UpdateCounter = 42U;
+    sCalibration.bIsValid = true;
+
+    Gds_ResetImuCalibration();
+    EXPECT_EQ(Gds_PublishImuCalibration(nullptr), GDS_ERR_ARG);
+    EXPECT_EQ(Gds_ReadImuCalibration(nullptr), GDS_ERR_ARG);
+
+    ASSERT_EQ(Gds_PublishImuCalibration(&sCalibration), GDS_OK);
+    ASSERT_EQ(Gds_ReadImuCalibration(&sReadBack), GDS_OK);
+    EXPECT_FLOAT_EQ(sReadBack.sAccelBiasMps2.f32X, sCalibration.sAccelBiasMps2.f32X);
+    EXPECT_FLOAT_EQ(sReadBack.sAccelBiasMps2.f32Y, sCalibration.sAccelBiasMps2.f32Y);
+    EXPECT_FLOAT_EQ(sReadBack.sAccelBiasMps2.f32Z, sCalibration.sAccelBiasMps2.f32Z);
+    EXPECT_FLOAT_EQ(sReadBack.sGyroBiasRadS.f32X, sCalibration.sGyroBiasRadS.f32X);
+    EXPECT_FLOAT_EQ(sReadBack.sGyroBiasRadS.f32Y, sCalibration.sGyroBiasRadS.f32Y);
+    EXPECT_FLOAT_EQ(sReadBack.sGyroBiasRadS.f32Z, sCalibration.sGyroBiasRadS.f32Z);
+    EXPECT_EQ(sReadBack.u32TimestampMs, sCalibration.u32TimestampMs);
+    EXPECT_EQ(sReadBack.u32UpdateCounter, sCalibration.u32UpdateCounter);
+    EXPECT_TRUE(sReadBack.bIsValid);
 }

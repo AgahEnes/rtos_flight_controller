@@ -3,9 +3,37 @@
 #include <math.h>
 #include <string.h>
 
+#define NAV_PI_F      (3.14159265358979323846F)
+#define NAV_TWO_PI_F  (2.0F * NAV_PI_F)
+
 static float Navigation_prvAbsF32(float f32Value)
 {
     return (f32Value < 0.0F) ? (-f32Value) : f32Value;
+}
+
+static float Navigation_prvWrapAngle0To2Pi(float f32AngleRad)
+{
+    if ((f32AngleRad >= 0.0F) && (f32AngleRad < NAV_TWO_PI_F))
+    {
+        return f32AngleRad;
+    }
+
+    if (f32AngleRad < 0.0F)
+    {
+        while (f32AngleRad < 0.0F)
+        {
+            f32AngleRad += NAV_TWO_PI_F;
+        }
+    }
+    else
+    {
+        while (f32AngleRad >= NAV_TWO_PI_F)
+        {
+            f32AngleRad -= NAV_TWO_PI_F;
+        }
+    }
+
+    return f32AngleRad;
 }
 
 static uint8_t Navigation_prvIsVectorNearZero(const ts_Vector3d *psVector, float f32Epsilon)
@@ -133,6 +161,12 @@ static void Navigation_prvEstimateComplementary(ts_NavContext *psContext, const 
         (psContext->sConfig.f32Alpha * f32PitchGyroIntegrated) +
         ((1.0F - psContext->sConfig.f32Alpha) * f32PitchAccel);
     psContext->sEstimatedState.f32YawRad += (psRawImu->sGyro.f32Z * psContext->sConfig.f32DtS);
+    psContext->sEstimatedState.f32RollRad =
+        Navigation_prvWrapAngle0To2Pi(psContext->sEstimatedState.f32RollRad);
+    psContext->sEstimatedState.f32PitchRad =
+        Navigation_prvWrapAngle0To2Pi(psContext->sEstimatedState.f32PitchRad);
+    psContext->sEstimatedState.f32YawRad =
+        Navigation_prvWrapAngle0To2Pi(psContext->sEstimatedState.f32YawRad);
 
     psContext->sEstimatedState.f32RollRateRadS = psRawImu->sGyro.f32X;
     psContext->sEstimatedState.f32PitchRateRadS = psRawImu->sGyro.f32Y;
@@ -192,13 +226,24 @@ te_NavigationRetCode Navigation_Init(ts_NavContext *psContext, const ts_NavConfi
         (psConfig->f32Alpha < 0.0F) ||
         (psConfig->f32Alpha > 1.0F) ||
         (psConfig->f32ZeroEpsilon < 0.0F) ||
-        (psConfig->u8StuckThresholdCycles == 0U))
+        (psConfig->u8StuckThresholdCycles == 0U) ||
+        ((psConfig->sInitialAttitude.u8IsValid != 0U) && (psConfig->sInitialAttitude.u8IsValid != 1U)))
     {
         return NAV_RET_ERR_ARG;
     }
 
     (void)memset(psContext, 0, sizeof(*psContext));
     psContext->sConfig = *psConfig;
+    if (psConfig->sInitialAttitude.u8IsValid == 1U)
+    {
+        psContext->sEstimatedState.f32RollRad =
+            Navigation_prvWrapAngle0To2Pi(psConfig->sInitialAttitude.f32RollRad);
+        psContext->sEstimatedState.f32PitchRad =
+            Navigation_prvWrapAngle0To2Pi(psConfig->sInitialAttitude.f32PitchRad);
+        psContext->sEstimatedState.f32YawRad =
+            Navigation_prvWrapAngle0To2Pi(psConfig->sInitialAttitude.f32YawRad);
+        psContext->sEstimatedState.bIsEstimated = true;
+    }
     psContext->eLastDataStatus = NAV_STATUS_STALE;
     psContext->u8IsInitialized = 1U;
 

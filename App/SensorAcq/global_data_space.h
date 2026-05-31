@@ -36,6 +36,15 @@ typedef struct
     bool bIsEstimated;
 } ts_TopicVehicleState;
 
+typedef struct
+{
+    ts_Vector3d sAccelBiasMps2;
+    ts_Vector3d sGyroBiasRadS;
+    uint32_t u32TimestampMs;
+    uint32_t u32UpdateCounter;
+    bool bIsValid;
+} ts_TopicImuCalibration;
+
 typedef enum
 {
     GDS_OK = 0,
@@ -49,6 +58,9 @@ te_GdsRetCode Gds_ReadRawImu(ts_TopicRawImu *psRawImu);
 void Gds_ResetVehicleState(void);
 te_GdsRetCode Gds_PublishVehicleState(const ts_TopicVehicleState *psVehicleState);
 te_GdsRetCode Gds_ReadVehicleState(ts_TopicVehicleState *psVehicleState);
+void Gds_ResetImuCalibration(void);
+te_GdsRetCode Gds_PublishImuCalibration(const ts_TopicImuCalibration *psCalibration);
+te_GdsRetCode Gds_ReadImuCalibration(ts_TopicImuCalibration *psCalibration);
 
 #ifdef __cplusplus
 }

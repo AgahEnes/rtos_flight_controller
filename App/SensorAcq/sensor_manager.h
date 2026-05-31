@@ -29,6 +29,7 @@ typedef struct
 typedef struct
 {
     ts_SensorManagerConfig sConfig;
+    uint32_t u32LastAppliedCalibrationCounter;
     uint8_t u8IsInitialized;
 } ts_SensorManagerContext;
 
