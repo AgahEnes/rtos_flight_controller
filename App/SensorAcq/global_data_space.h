@@ -38,8 +38,17 @@ typedef struct
 
 typedef struct
 {
+    float f32RollRad;
+    float f32PitchRad;
+    float f32YawRad;
+    uint8_t u8IsValid;
+} ts_TopicNavInitialAttitude;
+
+typedef struct
+{
     ts_Vector3d sAccelBiasMps2;
     ts_Vector3d sGyroBiasRadS;
+    ts_TopicNavInitialAttitude sNavInitialAttitude;
     uint32_t u32TimestampMs;
     uint32_t u32UpdateCounter;
     bool bIsValid;

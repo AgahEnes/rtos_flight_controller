@@ -39,6 +39,7 @@ typedef struct
     uint32_t u32StationaryWindowCycles;
     uint32_t u32StationaryGlobalTimeoutCycles;
     uint32_t u32CalibrationCycles;
+    uint32_t u32PostCalibrationWaitCycles;
     uint32_t u32SettleMinCycles;
     uint32_t u32SettleMaxCycles;
     float f32StationaryGyroMaxRadS;
@@ -64,6 +65,7 @@ typedef struct
     uint32_t u32StationaryElapsedCycles;
     uint32_t u32StationaryWindowAcceptedCycles;
     uint32_t u32CalibrationAcceptedCycles;
+    uint32_t u32PostCalibrationWaitElapsedCycles;
     uint32_t u32SettleAcceptedCycles;
     ts_FlightControlWelford sStationaryGyroNormStats;
     ts_FlightControlWelford sStationaryAccelNormStats;

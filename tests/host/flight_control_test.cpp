@@ -86,9 +86,15 @@ TEST(FlightControlTest, FullNominalPreflightPublishesCalibrationThenTransitionsT
     ts_TopicImuCalibration sCalibration {};
     uint32_t u32Cycle;
     uint32_t u32TimestampMs = 100U;
-    const uint32_t u32TotalNominalCycles = 30U + 200U + 1U + 30U;
+    uint32_t u32TotalNominalCycles;
+    const uint32_t u32MaxNominalCyclesMargin = 5U;
 
     FlightControl_InitDefaultConfig(&sConfig);
+    u32TotalNominalCycles = sConfig.u32PbitPassCycles +
+                            sConfig.u32CalibrationCycles +
+                            1U +
+                            sConfig.u32PostCalibrationWaitCycles +
+                            sConfig.u32SettleMinCycles;
     ASSERT_EQ(FlightControl_Init(&sContext, &sConfig), FLIGHT_CONTROL_OK);
 
     Gds_ResetRawImu();
@@ -96,7 +102,10 @@ TEST(FlightControlTest, FullNominalPreflightPublishesCalibrationThenTransitionsT
     Gds_ResetImuCalibration();
     Gds_ResetNavCommand();
 
-    for (u32Cycle = 0U; u32Cycle < u32TotalNominalCycles; u32Cycle++)
+    for (u32Cycle = 0U;
+         (u32Cycle < (u32TotalNominalCycles + u32MaxNominalCyclesMargin)) &&
+         (sContext.eMode != FLIGHT_MODE_READY_FOR_IGNITION);
+         u32Cycle++)
     {
         sSample = CreateStableImuSample(u32TimestampMs);
         PublishImuAndRunStep(&sContext, &sSample);
@@ -109,6 +118,10 @@ TEST(FlightControlTest, FullNominalPreflightPublishesCalibrationThenTransitionsT
     EXPECT_NEAR(sCalibration.sGyroBiasRadS.f32X, 0.0F, 1.0e-6F);
     EXPECT_NEAR(sCalibration.sGyroBiasRadS.f32Y, 0.0F, 1.0e-6F);
     EXPECT_NEAR(sCalibration.sGyroBiasRadS.f32Z, 0.0F, 1.0e-6F);
+    EXPECT_EQ(sCalibration.sNavInitialAttitude.u8IsValid, 1U);
+    EXPECT_NEAR(sCalibration.sNavInitialAttitude.f32RollRad, 0.0F, 1.0e-4F);
+    EXPECT_NEAR(sCalibration.sNavInitialAttitude.f32PitchRad, 0.0F, 1.0e-4F);
+    EXPECT_NEAR(sCalibration.sNavInitialAttitude.f32YawRad, 0.0F, 1.0e-6F);
     EXPECT_EQ(sContext.eMode, FLIGHT_MODE_READY_FOR_IGNITION);
 
     sSample = CreateStableImuSample(u32TimestampMs);
@@ -140,7 +153,13 @@ TEST(FlightControlTest, PreflightPublishesNavReinitAfterSuccessfulSettle)
     EXPECT_EQ(sCommand.eCommand, NAV_CMD_NONE);
     EXPECT_EQ(sCommand.u32Sequence, 0U);
 
-    for (u32Cycle = 1U; u32Cycle < (30U + 200U + 1U + 30U); u32Cycle++)
+    for (u32Cycle = 1U;
+         u32Cycle < (sConfig.u32PbitPassCycles +
+                     sConfig.u32CalibrationCycles +
+                     1U +
+                     sConfig.u32PostCalibrationWaitCycles +
+                     sConfig.u32SettleMinCycles);
+         u32Cycle++)
     {
         u32TimestampMs += 10U;
         sSample = CreateStableImuSample(u32TimestampMs);

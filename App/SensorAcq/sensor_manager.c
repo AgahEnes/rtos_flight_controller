@@ -99,13 +99,18 @@ te_SensorManagerRetCode SensorManager_Step(ts_SensorManagerContext *psContext)
             return SENSOR_MANAGER_ERR_DRIVER;
         }
 
-        if (sRawImu.bIsValid == true)
+        if ((sRawImu.bIsValid == true) &&
+            ((psContext->u8HasLastPublishedImuTimestamp == 0U) ||
+             (sRawImu.u32TimestampMs > psContext->u32LastPublishedImuTimestampMs)))
         {
             eGdsRet = Gds_PublishRawImu(&sRawImu);
             if (eGdsRet != GDS_OK)
             {
                 return SENSOR_MANAGER_ERR_GDS;
             }
+
+            psContext->u8HasLastPublishedImuTimestamp = 1U;
+            psContext->u32LastPublishedImuTimestampMs = sRawImu.u32TimestampMs;
         }
     }
 

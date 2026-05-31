@@ -38,6 +38,8 @@ plotter = telem.LivePlot(cfg);
 fprintf('Listening: frame=%u bytes, baud=%u\n', c.frameLength, cfg.BaudRate);
 
 validCount = uint32(0);
+u32CalibrationFrameCount = uint32(0);
+u32LastCalibrationCounter = uint32(0);
 lastPrintTic = tic;
 
 hasPrevFrame = false;
@@ -62,26 +64,48 @@ while true
 
     while parser.hasFrame()
         u8Frame = parser.pop();
-        sFrame = telem.decodeFrame(u8Frame, c);
-        if sFrame.crcOk
+        if numel(u8Frame) < 3
+            continue;
+        end
+
+        u8MsgId = u8Frame(3);
+        if u8MsgId == c.msgIdImuVehicleState
+            sFrame = telem.decodeFrame(u8Frame, c);
+            if ~sFrame.crcOk
+                continue;
+            end
             ring.push(sFrame);
             validCount = validCount + 1;
+            u8Seq = sFrame.sequence;
+            u32Ts = sFrame.timestampMs;
+        elseif u8MsgId == c.msgIdImuCalibration
+            sCal = telem.decodeCalibrationFrame(u8Frame, c);
+            if ~sCal.crcOk
+                continue;
+            end
+            validCount = validCount + 1;
+            u32CalibrationFrameCount = u32CalibrationFrameCount + 1;
+            u32LastCalibrationCounter = sCal.updateCounter;
+            u8Seq = sCal.sequence;
+            u32Ts = sCal.timestampMs;
+        else
+            continue;
+        end
 
-            if hasPrevFrame
-                u8SeqDelta = uint8(mod(double(sFrame.sequence) - double(u8PrevSeq), 256));
-                f64TsDeltaMs = double(sFrame.timestampMs) - double(u32PrevTs);
-                if f64TsDeltaMs < 0
-                    f64TsDeltaMs = f64TsDeltaMs + 2^32;
-                end
-
-                f64AccumSeqDelta = f64AccumSeqDelta + double(u8SeqDelta);
-                f64AccumTsDeltaSec = f64AccumTsDeltaSec + (f64TsDeltaMs / 1000.0);
+        if hasPrevFrame
+            u8SeqDelta = uint8(mod(double(u8Seq) - double(u8PrevSeq), 256));
+            f64TsDeltaMs = double(u32Ts) - double(u32PrevTs);
+            if f64TsDeltaMs < 0
+                f64TsDeltaMs = f64TsDeltaMs + 2^32;
             end
 
-            u8PrevSeq = sFrame.sequence;
-            u32PrevTs = sFrame.timestampMs;
-            hasPrevFrame = true;
+            f64AccumSeqDelta = f64AccumSeqDelta + double(u8SeqDelta);
+            f64AccumTsDeltaSec = f64AccumTsDeltaSec + (f64TsDeltaMs / 1000.0);
         end
+
+        u8PrevSeq = u8Seq;
+        u32PrevTs = u32Ts;
+        hasPrevFrame = true;
     end
 
     plotter.maybeUpdate(ring);
@@ -103,9 +127,10 @@ while true
             sSeqCheck = "N/A";
         end
 
-        fprintf(['frames=%u crcDrops=%u headerDrops=%u buffered=%u | ' ...
+        fprintf(['frames=%u calFrames=%u calCounter=%u crcDrops=%u headerDrops=%u buffered=%u | ' ...
                  'seqCheck=%s seqDelta=%.1f expSeq=%.1f err=%.2f seqHz=%.2f\n'], ...
-            validCount, parser.crcDropCount, parser.headerDropCount, ring.count, ...
+            validCount, u32CalibrationFrameCount, u32LastCalibrationCounter, ...
+            parser.crcDropCount, parser.headerDropCount, ring.count, ...
             sSeqCheck, f64AccumSeqDelta, f64ExpectedSeq, f64SeqErr, f64SeqRateHz);
 
         f64AccumSeqDelta = 0.0;

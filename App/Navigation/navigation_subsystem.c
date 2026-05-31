@@ -1,6 +1,7 @@
 #include "navigation_subsystem.h"
 
 #include <math.h>
+#include <stdint.h>
 #include <string.h>
 
 #define NAV_PI_F      (3.14159265358979323846F)
@@ -34,6 +35,59 @@ static float Navigation_prvWrapAngle0To2Pi(float f32AngleRad)
     }
 
     return f32AngleRad;
+}
+
+static float Navigation_prvWrapAngleMinusPiToPi(float f32AngleRad)
+{
+    if ((f32AngleRad >= (-NAV_PI_F)) && (f32AngleRad <= NAV_PI_F))
+    {
+        return f32AngleRad;
+    }
+
+    if (f32AngleRad < (-NAV_PI_F))
+    {
+        while (f32AngleRad < (-NAV_PI_F))
+        {
+            f32AngleRad += NAV_TWO_PI_F;
+        }
+    }
+    else
+    {
+        while (f32AngleRad > NAV_PI_F)
+        {
+            f32AngleRad -= NAV_TWO_PI_F;
+        }
+    }
+
+    return f32AngleRad;
+}
+
+static float Navigation_prvComputePitchAccelFromAccel(const ts_Vector3d *psAccel)
+{
+    float f32PitchAccel;
+    float f32Denom;
+
+    if (psAccel == NULL)
+    {
+        return 0.0F;
+    }
+
+    f32Denom = sqrtf((psAccel->f32Y * psAccel->f32Y) + (psAccel->f32Z * psAccel->f32Z));
+    f32PitchAccel = atan2f(-psAccel->f32X, f32Denom);
+
+    if (psAccel->f32Z < 0.0F)
+    {
+        if (f32PitchAccel >= 0.0F)
+        {
+            f32PitchAccel = NAV_PI_F - f32PitchAccel;
+        }
+        else
+        {
+            f32PitchAccel = -NAV_PI_F - f32PitchAccel;
+        }
+    }
+
+    return f32PitchAccel;
 }
 
 static uint8_t Navigation_prvIsVectorNearZero(const ts_Vector3d *psVector, float f32Epsilon)
@@ -140,6 +194,13 @@ static void Navigation_prvEstimateComplementary(ts_NavContext *psContext, const 
     float f32PitchAccel;
     float f32RollGyroIntegrated;
     float f32PitchGyroIntegrated;
+    float f32YawGyroIntegrated;
+    float f32RollInnovation;
+    float f32PitchInnovation;
+    float f32OneMinusAlpha;
+    float f32RollEstimated;
+    float f32PitchEstimated;
+    float f32YawEstimated;
 
     if ((psContext == NULL) || (psRawImu == NULL))
     {
@@ -147,27 +208,23 @@ static void Navigation_prvEstimateComplementary(ts_NavContext *psContext, const 
     }
 
     f32RollAccel = atan2f(psRawImu->sAccel.f32Y, psRawImu->sAccel.f32Z);
-    f32PitchAccel = atan2f(-psRawImu->sAccel.f32X,
-                           sqrtf((psRawImu->sAccel.f32Y * psRawImu->sAccel.f32Y) +
-                                 (psRawImu->sAccel.f32Z * psRawImu->sAccel.f32Z)));
+    f32PitchAccel = Navigation_prvComputePitchAccelFromAccel(&psRawImu->sAccel);
 
     f32RollGyroIntegrated = psContext->sEstimatedState.f32RollRad + (psRawImu->sGyro.f32X * psContext->sConfig.f32DtS);
     f32PitchGyroIntegrated = psContext->sEstimatedState.f32PitchRad + (psRawImu->sGyro.f32Y * psContext->sConfig.f32DtS);
+    f32YawGyroIntegrated = psContext->sEstimatedState.f32YawRad + (psRawImu->sGyro.f32Z * psContext->sConfig.f32DtS);
 
-    psContext->sEstimatedState.f32RollRad =
-        (psContext->sConfig.f32Alpha * f32RollGyroIntegrated) +
-        ((1.0F - psContext->sConfig.f32Alpha) * f32RollAccel);
-    psContext->sEstimatedState.f32PitchRad =
-        (psContext->sConfig.f32Alpha * f32PitchGyroIntegrated) +
-        ((1.0F - psContext->sConfig.f32Alpha) * f32PitchAccel);
-    psContext->sEstimatedState.f32YawRad += (psRawImu->sGyro.f32Z * psContext->sConfig.f32DtS);
-    psContext->sEstimatedState.f32RollRad =
-        Navigation_prvWrapAngle0To2Pi(psContext->sEstimatedState.f32RollRad);
-    psContext->sEstimatedState.f32PitchRad =
-        Navigation_prvWrapAngle0To2Pi(psContext->sEstimatedState.f32PitchRad);
-    psContext->sEstimatedState.f32YawRad =
-        Navigation_prvWrapAngle0To2Pi(psContext->sEstimatedState.f32YawRad);
+    f32RollInnovation = Navigation_prvWrapAngleMinusPiToPi(f32RollAccel - f32RollGyroIntegrated);
+    f32PitchInnovation = Navigation_prvWrapAngleMinusPiToPi(f32PitchAccel - f32PitchGyroIntegrated);
+    f32OneMinusAlpha = 1.0F - psContext->sConfig.f32Alpha;
 
+    f32RollEstimated = f32RollGyroIntegrated + (f32OneMinusAlpha * f32RollInnovation);
+    f32PitchEstimated = f32PitchGyroIntegrated + (f32OneMinusAlpha * f32PitchInnovation);
+    f32YawEstimated = f32YawGyroIntegrated;
+
+    psContext->sEstimatedState.f32RollRad = Navigation_prvWrapAngle0To2Pi(f32RollEstimated);
+    psContext->sEstimatedState.f32PitchRad = Navigation_prvWrapAngle0To2Pi(f32PitchEstimated);
+    psContext->sEstimatedState.f32YawRad = Navigation_prvWrapAngle0To2Pi(f32YawEstimated);
     psContext->sEstimatedState.f32RollRateRadS = psRawImu->sGyro.f32X;
     psContext->sEstimatedState.f32PitchRateRadS = psRawImu->sGyro.f32Y;
     psContext->sEstimatedState.f32YawRateRadS = psRawImu->sGyro.f32Z;
@@ -198,9 +255,9 @@ static void Navigation_prvApplyInitialAttitude(ts_NavContext *psContext)
     }
     else
     {
-        psContext->sEstimatedState.f32RollRad = 0.0F;
-        psContext->sEstimatedState.f32PitchRad = 0.0F;
-        psContext->sEstimatedState.f32YawRad = 0.0F;
+        psContext->sEstimatedState.f32RollRad = 180.0F;
+        psContext->sEstimatedState.f32PitchRad = 180.0F;
+        psContext->sEstimatedState.f32YawRad = 180.0F;
     }
 }
 
@@ -230,35 +287,64 @@ static void Navigation_prvReinit(ts_NavContext *psContext)
     psContext->eLastDataStatus = NAV_STATUS_STALE;
 }
 
-static void Navigation_prvHandleNavCommand(ts_NavContext *psContext)
+static void Navigation_prvApplyCalibrationInitialAttitude(ts_NavContext *psContext)
 {
-    ts_TopicNavCommand sCommand;
+    ts_TopicImuCalibration sCalibration;
 
     if (psContext == NULL)
     {
         return;
     }
 
-    if (Gds_ReadNavCommand(&sCommand) != GDS_OK)
+    (void)memset(&sCalibration, 0, sizeof(sCalibration));
+    if (Gds_ReadImuCalibration(&sCalibration) != GDS_OK)
     {
         return;
     }
 
+    if ((sCalibration.bIsValid == true) && (sCalibration.sNavInitialAttitude.u8IsValid == 1U))
+    {
+        psContext->sConfig.sInitialAttitude.f32RollRad = sCalibration.sNavInitialAttitude.f32RollRad;
+        psContext->sConfig.sInitialAttitude.f32PitchRad = sCalibration.sNavInitialAttitude.f32PitchRad;
+        psContext->sConfig.sInitialAttitude.f32YawRad = sCalibration.sNavInitialAttitude.f32YawRad;
+        psContext->sConfig.sInitialAttitude.u8IsValid = 1U;
+    }
+}
+
+static uint8_t Navigation_prvHandleNavCommand(ts_NavContext *psContext)
+{
+    ts_TopicNavCommand sCommand;
+    uint8_t u8CommandApplied = 0U;
+
+    if (psContext == NULL)
+    {
+        return 0U;
+    }
+
+    if (Gds_ReadNavCommand(&sCommand) != GDS_OK)
+    {
+        return 0U;
+    }
+
     if (sCommand.u32Sequence == psContext->u32LastExecutedCmdSeq)
     {
-        return;
+        return 0U;
     }
 
     switch (sCommand.eCommand)
     {
         case NAV_CMD_RESET_FILTER:
         {
+            Navigation_prvApplyCalibrationInitialAttitude(psContext);
             Navigation_prvResetFilter(psContext);
+            u8CommandApplied = 1U;
             break;
         }
         case NAV_CMD_REINIT:
         {
+            Navigation_prvApplyCalibrationInitialAttitude(psContext);
             Navigation_prvReinit(psContext);
+            u8CommandApplied = 1U;
             break;
         }
         case NAV_CMD_NONE:
@@ -269,6 +355,7 @@ static void Navigation_prvHandleNavCommand(ts_NavContext *psContext)
     }
 
     psContext->u32LastExecutedCmdSeq = sCommand.u32Sequence;
+    return u8CommandApplied;
 }
 
 static te_NavDataStatus Nav_ValidateImuInput(const ts_NavContext *psContext, const ts_TopicRawImu *psNewImu)
@@ -351,6 +438,7 @@ te_NavigationRetCode NavigationTask_Step(ts_NavContext *psContext,
                                      ts_TopicVehicleState *psVehicleState)
 {
     te_NavDataStatus eDataStatus;
+    uint8_t u8CommandApplied;
 
     if ((psContext == NULL) || (psRawImu == NULL) || (psVehicleState == NULL))
     {
@@ -362,15 +450,17 @@ te_NavigationRetCode NavigationTask_Step(ts_NavContext *psContext,
         return NAV_RET_ERR_STATE;
     }
 
-    Navigation_prvHandleNavCommand(psContext);
-
-    eDataStatus = Nav_ValidateImuInput(psContext, psRawImu);
-    psContext->eLastDataStatus = eDataStatus;
-
-    if (eDataStatus == NAV_STATUS_OK)
+    u8CommandApplied = Navigation_prvHandleNavCommand(psContext);
+    if (u8CommandApplied == 0U)
     {
-        Navigation_prvEstimateComplementary(psContext, psRawImu);
-        psContext->u32LastProcessedTimestampMs = psRawImu->u32TimestampMs;
+        eDataStatus = Nav_ValidateImuInput(psContext, psRawImu);
+        psContext->eLastDataStatus = eDataStatus;
+
+        if (eDataStatus == NAV_STATUS_OK)
+        {
+            Navigation_prvEstimateComplementary(psContext, psRawImu);
+            psContext->u32LastProcessedTimestampMs = psRawImu->u32TimestampMs;
+        }
     }
 
     Navigation_prvUpdateStuckCounter(psContext, psRawImu);

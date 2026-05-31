@@ -37,6 +37,13 @@ typedef struct
     ts_TelemetryVehicleStatePayload sVehicleState;
 } ts_TelemetryPayload;
 
+typedef struct
+{
+    uint8_t u8Sequence;
+    uint32_t u32TelemetryTimestampMs;
+    ts_TopicImuCalibration sCalibration;
+} ts_TelemetryCalibrationPayload;
+
 static uint16_t TelemetryTask_prvCrc16Ccitt(const uint8_t *pu8Data, uint16_t u16Length)
 {
     uint16_t u16Crc = TELEMETRY_TASK_CRC16_INIT;
@@ -85,7 +92,7 @@ static uint16_t TelemetryTask_prvPackMessage(const ts_TelemetryPayload *psPayloa
     uint16_t u16Crc;
     uint16_t u16Offset = 0U;
 
-    if ((psPayload == NULL) || (pu8OutBuffer == NULL) || (u16OutBufferLen < TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH))
+    if ((psPayload == NULL) || (pu8OutBuffer == NULL) || (u16OutBufferLen < TELEMETRY_TASK_FRAME_LENGTH))
     {
         return 0U;
     }
@@ -133,42 +140,78 @@ static uint16_t TelemetryTask_prvPackMessage(const ts_TelemetryPayload *psPayloa
     return u16Offset;
 }
 
-te_TelemetryTaskRetCode TelemetryTask_Init(ts_TelemetryTaskContext *psContext,
-                                           const ts_TelemetryTaskConfig *psConfig)
+static uint16_t TelemetryTask_prvPackCalibrationMessage(const ts_TelemetryCalibrationPayload *psPayload,
+                                                        uint8_t *pu8OutBuffer,
+                                                        uint16_t u16OutBufferLen)
 {
-    if ((psContext == NULL) || (psConfig == NULL))
+    uint16_t u16Crc;
+    uint16_t u16Offset = 0U;
+
+    if ((psPayload == NULL) ||
+        (pu8OutBuffer == NULL) ||
+        (u16OutBufferLen < TELEMETRY_TASK_CALIBRATION_FRAME_LENGTH))
     {
-        return TELEMETRY_TASK_ERR_ARG;
+        return 0U;
     }
 
-    if ((psConfig->pfnUartSend == NULL) ||
-        (psConfig->pfnGetTickMs == NULL) ||
-        (psConfig->pu8TxBuffer == NULL) ||
-        (psConfig->u16TxBufferLength < TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH))
+    pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_SYNC_BYTE_0;
+    pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_SYNC_BYTE_1;
+    pu8OutBuffer[u16Offset++] = TELEMETRY_TASK_MSG_ID_IMU_CALIBRATION;
+    pu8OutBuffer[u16Offset++] = psPayload->u8Sequence;
+
+    TelemetryTask_prvWriteU32Le(&pu8OutBuffer[u16Offset], psPayload->u32TelemetryTimestampMs);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.sAccelBiasMps2.f32X);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.sAccelBiasMps2.f32Y);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.sAccelBiasMps2.f32Z);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.sGyroBiasRadS.f32X);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.sGyroBiasRadS.f32Y);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.sGyroBiasRadS.f32Z);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteU32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.u32TimestampMs);
+    u16Offset += 4U;
+    TelemetryTask_prvWriteU32Le(&pu8OutBuffer[u16Offset], psPayload->sCalibration.u32UpdateCounter);
+    u16Offset += 4U;
+    pu8OutBuffer[u16Offset++] = (psPayload->sCalibration.bIsValid == true) ? 1U : 0U;
+
+    u16Crc = TelemetryTask_prvCrc16Ccitt(pu8OutBuffer, u16Offset);
+    pu8OutBuffer[u16Offset++] = (uint8_t)(u16Crc & 0xFFU);
+    pu8OutBuffer[u16Offset++] = (uint8_t)((u16Crc >> 8U) & 0xFFU);
+
+    return u16Offset;
+}
+
+static te_TelemetryTaskRetCode TelemetryTask_prvSendPackedFrame(ts_TelemetryTaskContext *psContext,
+                                                                uint16_t u16PacketLength)
+{
+    if (u16PacketLength == 0U)
     {
-        return TELEMETRY_TASK_ERR_ARG;
+        return TELEMETRY_TASK_ERR_PACK;
     }
 
-    (void)memset(psContext, 0, sizeof(*psContext));
-    psContext->sConfig = *psConfig;
-    psContext->u8IsInitialized = 1U;
-    psContext->u8Sequence = 0U;
+    if (psContext->sConfig.pfnUartSend(psContext->sConfig.pu8TxBuffer,
+                                       u16PacketLength,
+                                       psContext->sConfig.vpUartContext) == false)
+    {
+        return TELEMETRY_TASK_ERR_TX;
+    }
 
+    psContext->u8Sequence++;
     return TELEMETRY_TASK_OK;
 }
 
-te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
+static te_TelemetryTaskRetCode TelemetryTask_prvRunSyncSlot(ts_TelemetryTaskContext *psContext)
 {
     ts_TopicRawImu sRawImu;
     ts_TopicVehicleState sVehicleState;
     ts_TelemetryPayload sPayload;
     te_GdsRetCode eGdsRet;
     uint16_t u16PacketLength;
-
-    if ((psContext == NULL) || (psContext->u8IsInitialized == 0U))
-    {
-        return TELEMETRY_TASK_ERR_STATE;
-    }
 
     (void)memset(&sRawImu, 0, sizeof(sRawImu));
     eGdsRet = Gds_ReadRawImu(&sRawImu);
@@ -202,20 +245,93 @@ te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
     sPayload.sVehicleState.u8IsEstimated = (sVehicleState.bIsEstimated == true) ? 1U : 0U;
 
     u16PacketLength = TelemetryTask_prvPackMessage(&sPayload,
-                                                           psContext->sConfig.pu8TxBuffer,
-                                                           psContext->sConfig.u16TxBufferLength);
-    if (u16PacketLength == 0U)
+                                                   psContext->sConfig.pu8TxBuffer,
+                                                   psContext->sConfig.u16TxBufferLength);
+    return TelemetryTask_prvSendPackedFrame(psContext, u16PacketLength);
+}
+
+static te_TelemetryTaskRetCode TelemetryTask_prvRunEventSlot(ts_TelemetryTaskContext *psContext)
+{
+    ts_TopicImuCalibration sCalibration;
+    ts_TelemetryCalibrationPayload sPayload;
+    te_TelemetryTaskRetCode eRet;
+    te_GdsRetCode eGdsRet;
+    uint16_t u16PacketLength;
+
+    (void)memset(&sCalibration, 0, sizeof(sCalibration));
+    eGdsRet = Gds_ReadImuCalibration(&sCalibration);
+    if (eGdsRet != GDS_OK)
     {
-        return TELEMETRY_TASK_ERR_PACK;
+        return TELEMETRY_TASK_ERR_GDS;
     }
 
-    if (psContext->sConfig.pfnUartSend(psContext->sConfig.pu8TxBuffer,
-                                       u16PacketLength,
-                                       psContext->sConfig.vpUartContext) == false)
+    if ((sCalibration.bIsValid == false) ||
+        (sCalibration.u32UpdateCounter == psContext->u32LastTelemetriedCalibrationCounter))
     {
-        return TELEMETRY_TASK_ERR_TX;
+        return TELEMETRY_TASK_OK;
     }
 
-    psContext->u8Sequence++;
+    sPayload.u8Sequence = psContext->u8Sequence;
+    sPayload.u32TelemetryTimestampMs = psContext->sConfig.pfnGetTickMs(psContext->sConfig.vpTickContext);
+    sPayload.sCalibration = sCalibration;
+
+    u16PacketLength = TelemetryTask_prvPackCalibrationMessage(&sPayload,
+                                                              psContext->sConfig.pu8TxBuffer,
+                                                              psContext->sConfig.u16TxBufferLength);
+    eRet = TelemetryTask_prvSendPackedFrame(psContext, u16PacketLength);
+    if (eRet == TELEMETRY_TASK_OK)
+    {
+        psContext->u32LastTelemetriedCalibrationCounter = sCalibration.u32UpdateCounter;
+    }
+
+    return eRet;
+}
+
+te_TelemetryTaskRetCode TelemetryTask_Init(ts_TelemetryTaskContext *psContext,
+                                           const ts_TelemetryTaskConfig *psConfig)
+{
+    if ((psContext == NULL) || (psConfig == NULL))
+    {
+        return TELEMETRY_TASK_ERR_ARG;
+    }
+
+    if ((psConfig->pfnUartSend == NULL) ||
+        (psConfig->pfnGetTickMs == NULL) ||
+        (psConfig->pu8TxBuffer == NULL) ||
+        (psConfig->u16TxBufferLength < TELEMETRY_TASK_MAX_TX_BUFFER_LENGTH))
+    {
+        return TELEMETRY_TASK_ERR_ARG;
+    }
+
+    (void)memset(psContext, 0, sizeof(*psContext));
+    psContext->sConfig = *psConfig;
+    psContext->u8IsInitialized = 1U;
+    psContext->u8Sequence = 0U;
+    psContext->u8NextStepIsEvent = 0U;
+    psContext->u32LastTelemetriedCalibrationCounter = 0U;
+
     return TELEMETRY_TASK_OK;
+}
+
+te_TelemetryTaskRetCode TelemetryTask_Step(ts_TelemetryTaskContext *psContext)
+{
+    te_TelemetryTaskRetCode eRet;
+
+    if ((psContext == NULL) || (psContext->u8IsInitialized == 0U))
+    {
+        return TELEMETRY_TASK_ERR_STATE;
+    }
+
+    if (psContext->u8NextStepIsEvent == 0U)
+    {
+        eRet = TelemetryTask_prvRunSyncSlot(psContext);
+        psContext->u8NextStepIsEvent = 1U;
+    }
+    else
+    {
+        eRet = TelemetryTask_prvRunEventSlot(psContext);
+        psContext->u8NextStepIsEvent = 0U;
+    }
+
+    return eRet;
 }

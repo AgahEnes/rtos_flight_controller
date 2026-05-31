@@ -6,6 +6,7 @@ classdef FrameParser < handle
         state uint8 = 0
         frameBuf uint8
         framePos uint16 = 0
+        expectedFrameLength uint16 = 0
         outQueue cell
     end
 
@@ -21,7 +22,7 @@ classdef FrameParser < handle
                 constants = telem.FrameConstants();
             end
             obj.c = constants;
-            obj.frameBuf = zeros(1, double(obj.c.frameLength), 'uint8');
+            obj.frameBuf = zeros(1, double(obj.c.maxFrameLength), 'uint8');
             obj.outQueue = {};
         end
 
@@ -69,6 +70,7 @@ classdef FrameParser < handle
         function reset(obj)
             obj.state = uint8(0);
             obj.framePos = uint16(0);
+            obj.expectedFrameLength = uint16(0);
             obj.outQueue = {};
             obj.validCount = uint32(0);
             obj.crcDropCount = uint32(0);
@@ -104,6 +106,12 @@ classdef FrameParser < handle
                     if b == obj.c.msgIdImuVehicleState
                         obj.framePos = uint16(3);
                         obj.frameBuf(3) = b;
+                        obj.expectedFrameLength = obj.c.stateFrameLength;
+                        obj.state = uint8(3);
+                    elseif b == obj.c.msgIdImuCalibration
+                        obj.framePos = uint16(3);
+                        obj.frameBuf(3) = b;
+                        obj.expectedFrameLength = obj.c.calibrationFrameLength;
                         obj.state = uint8(3);
                     elseif b == obj.c.sync0
                         obj.framePos = uint16(1);
@@ -119,21 +127,25 @@ classdef FrameParser < handle
                 otherwise % collect until frame complete
                     obj.framePos = obj.framePos + 1;
                     obj.frameBuf(obj.framePos) = b;
-                    if obj.framePos == obj.c.frameLength
+                    if obj.framePos == obj.expectedFrameLength
                         obj.finalizeCandidateFrame();
                     end
             end
         end
 
         function finalizeCandidateFrame(obj)
-            u16RxCrc = bitor(uint16(obj.frameBuf(obj.c.idxCrcStart)), ...
-                             bitshift(uint16(obj.frameBuf(obj.c.idxCrcStart + 1)), 8));
-            u16Calc = telem.Crc16CcittFalse(obj.frameBuf(1:obj.c.crcDataLength));
+            u16CrcStart = uint16(obj.expectedFrameLength - obj.c.frameCrcLength + 1);
+            u16CrcDataLength = uint16(obj.expectedFrameLength - obj.c.frameCrcLength);
+            u8Candidate = obj.frameBuf(1:double(obj.expectedFrameLength));
+            u16RxCrc = bitor(uint16(u8Candidate(u16CrcStart)), ...
+                             bitshift(uint16(u8Candidate(u16CrcStart + 1)), 8));
+            u16Calc = telem.Crc16CcittFalse(u8Candidate(1:u16CrcDataLength));
             if u16RxCrc == u16Calc
-                obj.outQueue{end + 1} = obj.frameBuf; %#ok<AGROW>
+                obj.outQueue{end + 1} = u8Candidate; %#ok<AGROW>
                 obj.validCount = obj.validCount + 1;
                 obj.state = uint8(0);
                 obj.framePos = uint16(0);
+                obj.expectedFrameLength = uint16(0);
                 return;
             end
 
@@ -143,9 +155,11 @@ classdef FrameParser < handle
 
         function resyncAfterCrcFail(obj)
             % Keep only a possible leading sync pattern from the tail.
-            tail = obj.frameBuf(end-1:end);
+            tailStart = double(obj.expectedFrameLength) - 1;
+            tail = obj.frameBuf(tailStart:tailStart + 1);
             obj.state = uint8(0);
             obj.framePos = uint16(0);
+            obj.expectedFrameLength = uint16(0);
 
             if tail(1) == obj.c.sync0 && tail(2) == obj.c.sync1
                 obj.frameBuf(1:2) = tail;

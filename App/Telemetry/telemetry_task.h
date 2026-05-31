@@ -11,6 +11,7 @@ extern "C" {
 #define TELEMETRY_TASK_SYNC_BYTE_0               (0xA5U)
 #define TELEMETRY_TASK_SYNC_BYTE_1               (0x5AU)
 #define TELEMETRY_TASK_MSG_ID_IMU_VEHICLE_STATE  (0x12U)
+#define TELEMETRY_TASK_MSG_ID_IMU_CALIBRATION    (0x81U)
 
 #define TELEMETRY_TASK_FRAME_HEADER_LENGTH       (4U)
 #define TELEMETRY_TASK_FRAME_CRC_LENGTH          (2U)
@@ -32,6 +33,15 @@ extern "C" {
                                                     TELEMETRY_TASK_FRAME_CRC_LENGTH)
 
 #define TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH      (TELEMETRY_TASK_FRAME_LENGTH)
+
+/* Calibration event frame: telemetry ts + accelBias xyz + gyroBias xyz + cal ts + cal counter + isValid */
+#define TELEMETRY_TASK_CALIBRATION_PAYLOAD_LENGTH  (37U)
+#define TELEMETRY_TASK_CALIBRATION_FRAME_LENGTH    (TELEMETRY_TASK_FRAME_HEADER_LENGTH + \
+                                                    TELEMETRY_TASK_CALIBRATION_PAYLOAD_LENGTH + \
+                                                    TELEMETRY_TASK_FRAME_CRC_LENGTH)
+
+/* Max transmit frame length across all telemetry messages. */
+#define TELEMETRY_TASK_MAX_TX_BUFFER_LENGTH      (TELEMETRY_TASK_FRAME_LENGTH)
 
 typedef bool (*tpfn_TelemetryTxSend)(const uint8_t *pu8Data, uint16_t u16Length, void *vpContext);
 typedef uint32_t (*tpfn_TelemetryGetTickMs)(void *vpContext);
@@ -60,7 +70,9 @@ typedef struct
 {
     ts_TelemetryTaskConfig sConfig;
     uint8_t u8Sequence;
+    uint8_t u8NextStepIsEvent;
     uint8_t u8IsInitialized;
+    uint32_t u32LastTelemetriedCalibrationCounter;
 } ts_TelemetryTaskContext;
 
 te_TelemetryTaskRetCode TelemetryTask_Init(ts_TelemetryTaskContext *psContext,

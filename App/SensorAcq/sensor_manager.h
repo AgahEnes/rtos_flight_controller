@@ -30,6 +30,8 @@ typedef struct
 {
     ts_SensorManagerConfig sConfig;
     uint32_t u32LastAppliedCalibrationCounter;
+    uint32_t u32LastPublishedImuTimestampMs;
+    uint8_t u8HasLastPublishedImuTimestamp;
     uint8_t u8IsInitialized;
 } ts_SensorManagerContext;
 

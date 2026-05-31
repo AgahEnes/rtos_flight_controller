@@ -22,7 +22,7 @@
 #define APP_PLATFORM_NAV_TASK_STACK_WORDS               (512U)
 #define APP_PLATFORM_FLIGHT_CONTROL_TASK_STACK_WORDS    (768U)
 #define APP_PLATFORM_SENSOR_TASK_PERIOD_MS              (10U)
-#define APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS           (100U)
+#define APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS           (50U)
 #define APP_PLATFORM_NAV_TASK_PERIOD_MS                 (10U)
 #define APP_PLATFORM_FLIGHT_CONTROL_TASK_PERIOD_MS      (10U)
 #define APP_PLATFORM_SENSOR_TASK_PRIORITY               (osPriorityAboveNormal)
@@ -52,8 +52,8 @@ static ts_SensorManagerContext gsSensorManagerContext;
 static ts_TelemetryTaskContext gsTelemetryTaskContext;
 static ts_NavContext gsNavContext;
 static ts_FlightControlContext gsFlightControlContext;
-static uint8_t gau8TelemetryTxBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
-static uint8_t gau8TelemetryTxDmaBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
+static uint8_t gau8TelemetryTxBuffer[TELEMETRY_TASK_MAX_TX_BUFFER_LENGTH];
+static uint8_t gau8TelemetryTxDmaBuffer[TELEMETRY_TASK_MAX_TX_BUFFER_LENGTH];
 
 static StaticTask_t gsAppPlatformSensorTaskCb;
 static StackType_t gau32AppPlatformSensorTaskStack[APP_PLATFORM_SENSOR_TASK_STACK_WORDS];
@@ -99,7 +99,7 @@ static bool AppPlatformPort_prvUartDmaSend(const uint8_t *pu8Data, uint16_t u16L
         (gxAppPlatformUartTxDmaToken == NULL) ||
         (pu8Data == NULL) ||
         (u16Length == 0U) ||
-        (u16Length > TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH))
+        (u16Length > TELEMETRY_TASK_MAX_TX_BUFFER_LENGTH))
     {
         return false;
     }

@@ -7,6 +7,37 @@ extern "C" {
 
 namespace {
 constexpr float kTwoPiRad = 6.28318530717958647692F;
+constexpr float kPiRad = 3.14159265358979323846F;
+
+float WrapMinusPiToPi(float f32AngleRad)
+{
+    while (f32AngleRad > kPiRad)
+    {
+        f32AngleRad -= kTwoPiRad;
+    }
+
+    while (f32AngleRad < (-kPiRad))
+    {
+        f32AngleRad += kTwoPiRad;
+    }
+
+    return f32AngleRad;
+}
+
+float WrapZeroToTwoPi(float f32AngleRad)
+{
+    while (f32AngleRad >= kTwoPiRad)
+    {
+        f32AngleRad -= kTwoPiRad;
+    }
+
+    while (f32AngleRad < 0.0F)
+    {
+        f32AngleRad += kTwoPiRad;
+    }
+
+    return f32AngleRad;
+}
 
 ts_TopicRawImu CreateValidImuSample(uint32_t u32TimestampMs)
 {
@@ -157,6 +188,27 @@ TEST(NavigationSubsystemTest, ComplementaryFilterUsesAccelWhenAlphaIsZero)
     EXPECT_NEAR(sVehicleState.f32PitchRad, 0.0F, 1.0e-4F);
 }
 
+TEST(NavigationSubsystemTest, PitchAccelUsesInvertedQuarterWhenAccelZIsNegative)
+{
+    ts_NavContext sContext {};
+    ts_NavConfig sConfig = CreateDefaultConfig();
+    ts_TopicRawImu sRawImu = CreateValidImuSample(740U);
+    ts_TopicVehicleState sVehicleState {};
+
+    sConfig.f32Alpha = 0.0F;
+    sRawImu.sAccel.f32X = 0.0F;
+    sRawImu.sAccel.f32Y = 0.0F;
+    sRawImu.sAccel.f32Z = -9.81F;
+    sRawImu.sGyro.f32X = 0.001F;
+    sRawImu.sGyro.f32Y = 0.001F;
+    sRawImu.sGyro.f32Z = 0.001F;
+
+    ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+
+    EXPECT_NEAR(sVehicleState.f32PitchRad, kPiRad, 1.0e-3F);
+}
+
 TEST(NavigationSubsystemTest, YawDeadReckoningIntegratesGyroZ)
 {
     ts_NavContext sContext {};
@@ -208,6 +260,84 @@ TEST(NavigationSubsystemTest, YawIntegrationWrapsToZeroToTwoPiRange)
     ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
     ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
     EXPECT_NEAR(sVehicleState.f32YawRad, 0.008F, 1.0e-6F);
+}
+
+TEST(NavigationSubsystemTest, RollInnovationUsesShortestPathAcrossZeroTwoPiBoundary)
+{
+    ts_NavContext sContext {};
+    ts_NavConfig sConfig = CreateDefaultConfig();
+    ts_TopicRawImu sRawImu = CreateValidImuSample(720U);
+    ts_TopicVehicleState sVehicleState {};
+    float f32ExpectedRoll;
+    float f32InitialRoll = kTwoPiRad - 0.010F;
+    float f32AccelRoll = 0.010F;
+    float f32Innovation;
+    float f32OneMinusAlpha;
+    float f32RollGyroIntegrated;
+
+    sConfig.f32Alpha = 0.98F;
+    sConfig.sInitialAttitude.f32RollRad = f32InitialRoll;
+    sConfig.sInitialAttitude.f32PitchRad = 0.0F;
+    sConfig.sInitialAttitude.f32YawRad = 0.0F;
+    sConfig.sInitialAttitude.u8IsValid = 1U;
+
+    sRawImu.sAccel.f32X = 0.0F;
+    sRawImu.sAccel.f32Y = sinf(f32AccelRoll) * 9.81F;
+    sRawImu.sAccel.f32Z = cosf(f32AccelRoll) * 9.81F;
+    sRawImu.sGyro.f32X = 0.001F;
+    sRawImu.sGyro.f32Y = 0.001F;
+    sRawImu.sGyro.f32Z = 0.001F;
+    f32AccelRoll = atan2f(sRawImu.sAccel.f32Y, sRawImu.sAccel.f32Z);
+
+    f32OneMinusAlpha = 1.0F - sConfig.f32Alpha;
+    f32RollGyroIntegrated = f32InitialRoll + (sRawImu.sGyro.f32X * sConfig.f32DtS);
+    f32Innovation = WrapMinusPiToPi(f32AccelRoll - f32RollGyroIntegrated);
+    f32ExpectedRoll = WrapZeroToTwoPi(f32RollGyroIntegrated + (f32OneMinusAlpha * f32Innovation));
+
+    ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+
+    EXPECT_GT(sVehicleState.f32RollRad, 6.0F);
+    EXPECT_NEAR(sVehicleState.f32RollRad, f32ExpectedRoll, 1.0e-4F);
+}
+
+TEST(NavigationSubsystemTest, RollInnovationUsesShortestPathAcrossMinusPiToPiBoundary)
+{
+    ts_NavContext sContext {};
+    ts_NavConfig sConfig = CreateDefaultConfig();
+    ts_TopicRawImu sRawImu = CreateValidImuSample(730U);
+    ts_TopicVehicleState sVehicleState {};
+    float f32ExpectedRoll;
+    float f32InitialRoll = kPiRad - 0.010F;
+    float f32AccelRoll = (-kPiRad) + 0.010F;
+    float f32Innovation;
+    float f32OneMinusAlpha;
+    float f32RollGyroIntegrated;
+
+    sConfig.f32Alpha = 0.98F;
+    sConfig.sInitialAttitude.f32RollRad = f32InitialRoll;
+    sConfig.sInitialAttitude.f32PitchRad = 0.0F;
+    sConfig.sInitialAttitude.f32YawRad = 0.0F;
+    sConfig.sInitialAttitude.u8IsValid = 1U;
+
+    sRawImu.sAccel.f32X = 0.0F;
+    sRawImu.sAccel.f32Y = sinf(f32AccelRoll) * 9.81F;
+    sRawImu.sAccel.f32Z = cosf(f32AccelRoll) * 9.81F;
+    sRawImu.sGyro.f32X = 0.001F;
+    sRawImu.sGyro.f32Y = 0.001F;
+    sRawImu.sGyro.f32Z = 0.001F;
+    f32AccelRoll = atan2f(sRawImu.sAccel.f32Y, sRawImu.sAccel.f32Z);
+
+    f32OneMinusAlpha = 1.0F - sConfig.f32Alpha;
+    f32RollGyroIntegrated = f32InitialRoll + (sRawImu.sGyro.f32X * sConfig.f32DtS);
+    f32Innovation = WrapMinusPiToPi(f32AccelRoll - f32RollGyroIntegrated);
+    f32ExpectedRoll = WrapZeroToTwoPi(f32RollGyroIntegrated + (f32OneMinusAlpha * f32Innovation));
+
+    ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+
+    EXPECT_GT(f32Innovation, 0.0F);
+    EXPECT_NEAR(sVehicleState.f32RollRad, f32ExpectedRoll, 1.0e-4F);
 }
 
 TEST(NavigationSubsystemTest, IntegrationPathReadsImuAndPublishesVehicleState)
@@ -269,12 +399,21 @@ TEST(NavigationSubsystemTest, ReinitCommandClearsInternalTracking)
     ts_TopicRawImu sRawImu = CreateValidImuSample(1100U);
     ts_TopicVehicleState sVehicleState {};
     ts_TopicNavCommand sCommand {};
+    ts_TopicImuCalibration sCalibration {};
 
     Gds_ResetNavCommand();
     ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
     ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
     ASSERT_TRUE(sContext.u8HasLastRawImu != 0U);
     ASSERT_TRUE(sContext.sEstimatedState.bIsEstimated);
+
+    Gds_ResetImuCalibration();
+    sCalibration.bIsValid = true;
+    sCalibration.sNavInitialAttitude.f32RollRad = -0.40F;
+    sCalibration.sNavInitialAttitude.f32PitchRad = 0.50F;
+    sCalibration.sNavInitialAttitude.f32YawRad = kTwoPiRad + 0.60F;
+    sCalibration.sNavInitialAttitude.u8IsValid = 1U;
+    ASSERT_EQ(Gds_PublishImuCalibration(&sCalibration), GDS_OK);
 
     sCommand.eCommand = NAV_CMD_REINIT;
     sCommand.u32Sequence = 21U;
@@ -286,4 +425,7 @@ TEST(NavigationSubsystemTest, ReinitCommandClearsInternalTracking)
     EXPECT_EQ(sContext.u32LastExecutedCmdSeq, 21U);
     EXPECT_EQ(sContext.u8StuckCycleCount, 0U);
     EXPECT_TRUE(sContext.u8HasLastRawImu != 0U);
+    EXPECT_NEAR(sVehicleState.f32RollRad, kTwoPiRad - 0.40F, 1.0e-6F);
+    EXPECT_NEAR(sVehicleState.f32PitchRad, 0.50F, 1.0e-6F);
+    EXPECT_NEAR(sVehicleState.f32YawRad, 0.60F, 1.0e-6F);
 }
