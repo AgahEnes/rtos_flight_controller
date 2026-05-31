@@ -9,7 +9,8 @@ extern "C" {
 
 #include "global_data_space.h"
 
-#define NAV_CFG_DEFAULT_ALPHA               (0.98F)
+#define NAV_CFG_DEFAULT_ALPHA               (3.0F)   /* Mahony proportional gain Kp */
+#define NAV_CFG_DEFAULT_KP                  (NAV_CFG_DEFAULT_ALPHA)
 #define NAV_CFG_DEFAULT_DT_S                (0.01F)
 #define NAV_CFG_ZERO_EPSILON                (1.0e-6F)
 #define NAV_CFG_STUCK_THRESHOLD_CYCLES      (3U)
@@ -42,7 +43,7 @@ typedef struct
 
 typedef struct
 {
-    float f32Alpha;
+    float f32Alpha; /* Repurposed as Mahony proportional gain (Kp). */
     float f32DtS;
     float f32ZeroEpsilon;
     uint8_t u8StuckThresholdCycles;
@@ -51,7 +52,16 @@ typedef struct
 
 typedef struct
 {
+    float f32q0;
+    float f32q1;
+    float f32q2;
+    float f32q3;
+} ts_NavQuaternion;
+
+typedef struct
+{
     ts_NavConfig sConfig;
+    ts_NavQuaternion sQuaternion;
     ts_TopicVehicleState sEstimatedState;
     ts_TopicRawImu sLastRawImu;
     uint32_t u32LastProcessedTimestampMs;

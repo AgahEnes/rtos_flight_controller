@@ -37,57 +37,140 @@ static float Navigation_prvWrapAngle0To2Pi(float f32AngleRad)
     return f32AngleRad;
 }
 
-static float Navigation_prvWrapAngleMinusPiToPi(float f32AngleRad)
+static void Navigation_prvSetIdentityQuaternion(ts_NavQuaternion *psQuaternion)
 {
-    if ((f32AngleRad >= (-NAV_PI_F)) && (f32AngleRad <= NAV_PI_F))
+    if (psQuaternion == NULL)
     {
-        return f32AngleRad;
+        return;
     }
 
-    if (f32AngleRad < (-NAV_PI_F))
-    {
-        while (f32AngleRad < (-NAV_PI_F))
-        {
-            f32AngleRad += NAV_TWO_PI_F;
-        }
-    }
-    else
-    {
-        while (f32AngleRad > NAV_PI_F)
-        {
-            f32AngleRad -= NAV_TWO_PI_F;
-        }
-    }
-
-    return f32AngleRad;
+    psQuaternion->f32q0 = 1.0F;
+    psQuaternion->f32q1 = 0.0F;
+    psQuaternion->f32q2 = 0.0F;
+    psQuaternion->f32q3 = 0.0F;
 }
 
-static float Navigation_prvComputePitchAccelFromAccel(const ts_Vector3d *psAccel)
+static void Navigation_prvNormalizeQuaternion(ts_NavQuaternion *psQuaternion, float f32ZeroEpsilon)
 {
-    float f32PitchAccel;
-    float f32Denom;
+    float f32Norm;
 
-    if (psAccel == NULL)
+    if (psQuaternion == NULL)
     {
-        return 0.0F;
+        return;
     }
 
-    f32Denom = sqrtf((psAccel->f32Y * psAccel->f32Y) + (psAccel->f32Z * psAccel->f32Z));
-    f32PitchAccel = atan2f(-psAccel->f32X, f32Denom);
+    f32Norm = sqrtf((psQuaternion->f32q0 * psQuaternion->f32q0) +
+                    (psQuaternion->f32q1 * psQuaternion->f32q1) +
+                    (psQuaternion->f32q2 * psQuaternion->f32q2) +
+                    (psQuaternion->f32q3 * psQuaternion->f32q3));
 
-    if (psAccel->f32Z < 0.0F)
+    if (f32Norm < f32ZeroEpsilon)
     {
-        if (f32PitchAccel >= 0.0F)
-        {
-            f32PitchAccel = NAV_PI_F - f32PitchAccel;
-        }
-        else
-        {
-            f32PitchAccel = -NAV_PI_F - f32PitchAccel;
-        }
+        Navigation_prvSetIdentityQuaternion(psQuaternion);
+        return;
     }
 
-    return f32PitchAccel;
+    psQuaternion->f32q0 /= f32Norm;
+    psQuaternion->f32q1 /= f32Norm;
+    psQuaternion->f32q2 /= f32Norm;
+    psQuaternion->f32q3 /= f32Norm;
+}
+
+static void Navigation_prvEulerToQuaternion(float f32RollRad,
+                                            float f32PitchRad,
+                                            float f32YawRad,
+                                            ts_NavQuaternion *psQuaternion)
+{
+    float f32HalfRoll;
+    float f32HalfPitch;
+    float f32HalfYaw;
+    float f32Cr;
+    float f32Sr;
+    float f32Cp;
+    float f32Sp;
+    float f32Cy;
+    float f32Sy;
+
+    if (psQuaternion == NULL)
+    {
+        return;
+    }
+
+    f32HalfRoll = 0.5F * f32RollRad;
+    f32HalfPitch = 0.5F * f32PitchRad;
+    f32HalfYaw = 0.5F * f32YawRad;
+
+    f32Cr = cosf(f32HalfRoll);
+    f32Sr = sinf(f32HalfRoll);
+    f32Cp = cosf(f32HalfPitch);
+    f32Sp = sinf(f32HalfPitch);
+    f32Cy = cosf(f32HalfYaw);
+    f32Sy = sinf(f32HalfYaw);
+
+    psQuaternion->f32q0 = (f32Cr * f32Cp * f32Cy) + (f32Sr * f32Sp * f32Sy);
+    psQuaternion->f32q1 = (f32Sr * f32Cp * f32Cy) - (f32Cr * f32Sp * f32Sy);
+    psQuaternion->f32q2 = (f32Cr * f32Sp * f32Cy) + (f32Sr * f32Cp * f32Sy);
+    psQuaternion->f32q3 = (f32Cr * f32Cp * f32Sy) - (f32Sr * f32Sp * f32Cy);
+}
+
+static void Navigation_prvQuaternionToEuler(const ts_NavQuaternion *psQuaternion,
+                                            float *pf32RollRad,
+                                            float *pf32PitchRad,
+                                            float *pf32YawRad)
+{
+    float f32AsinArg;
+
+    if ((psQuaternion == NULL) || (pf32RollRad == NULL) || (pf32PitchRad == NULL) || (pf32YawRad == NULL))
+    {
+        return;
+    }
+
+    *pf32RollRad = atan2f(2.0F * ((psQuaternion->f32q0 * psQuaternion->f32q1) + (psQuaternion->f32q2 * psQuaternion->f32q3)),
+                          (psQuaternion->f32q0 * psQuaternion->f32q0) -
+                              (psQuaternion->f32q1 * psQuaternion->f32q1) -
+                              (psQuaternion->f32q2 * psQuaternion->f32q2) +
+                              (psQuaternion->f32q3 * psQuaternion->f32q3));
+
+    f32AsinArg = -2.0F * ((psQuaternion->f32q1 * psQuaternion->f32q3) - (psQuaternion->f32q0 * psQuaternion->f32q2));
+    f32AsinArg = fmaxf(-1.0F, fminf(1.0F, f32AsinArg));
+    *pf32PitchRad = asinf(f32AsinArg);
+
+    *pf32YawRad = atan2f(2.0F * ((psQuaternion->f32q0 * psQuaternion->f32q3) + (psQuaternion->f32q1 * psQuaternion->f32q2)),
+                         (psQuaternion->f32q0 * psQuaternion->f32q0) +
+                             (psQuaternion->f32q1 * psQuaternion->f32q1) -
+                             (psQuaternion->f32q2 * psQuaternion->f32q2) -
+                             (psQuaternion->f32q3 * psQuaternion->f32q3));
+}
+
+static void Navigation_prvSyncAttitudeFromQuaternion(ts_NavContext *psContext)
+{
+    float f32RollRad = 0.0F;
+    float f32PitchRad = 0.0F;
+    float f32YawRad = 0.0F;
+
+    if (psContext == NULL)
+    {
+        return;
+    }
+
+    Navigation_prvQuaternionToEuler(&psContext->sQuaternion, &f32RollRad, &f32PitchRad, &f32YawRad);
+    psContext->sEstimatedState.f32RollRad = Navigation_prvWrapAngle0To2Pi(f32RollRad);
+    psContext->sEstimatedState.f32PitchRad = Navigation_prvWrapAngle0To2Pi(f32PitchRad);
+    psContext->sEstimatedState.f32YawRad = Navigation_prvWrapAngle0To2Pi(f32YawRad);
+}
+
+static void Navigation_prvSyncQuaternionFromEuler(ts_NavContext *psContext)
+{
+    if (psContext == NULL)
+    {
+        return;
+    }
+
+    Navigation_prvEulerToQuaternion(psContext->sEstimatedState.f32RollRad,
+                                    psContext->sEstimatedState.f32PitchRad,
+                                    psContext->sEstimatedState.f32YawRad,
+                                    &psContext->sQuaternion);
+    Navigation_prvNormalizeQuaternion(&psContext->sQuaternion, psContext->sConfig.f32ZeroEpsilon);
 }
 
 static uint8_t Navigation_prvIsVectorNearZero(const ts_Vector3d *psVector, float f32Epsilon)
@@ -190,41 +273,74 @@ static void Navigation_prvUpdateStuckCounter(ts_NavContext *psContext, const ts_
 
 static void Navigation_prvEstimateComplementary(ts_NavContext *psContext, const ts_TopicRawImu *psRawImu)
 {
-    float f32RollAccel;
-    float f32PitchAccel;
-    float f32RollGyroIntegrated;
-    float f32PitchGyroIntegrated;
-    float f32YawGyroIntegrated;
-    float f32RollInnovation;
-    float f32PitchInnovation;
-    float f32OneMinusAlpha;
-    float f32RollEstimated;
-    float f32PitchEstimated;
-    float f32YawEstimated;
+    float f32q0;
+    float f32q1;
+    float f32q2;
+    float f32q3;
+    float f32Ax;
+    float f32Ay;
+    float f32Az;
+    float f32AccelNorm;
+    float f32Vx = 0.0F;
+    float f32Vy = 0.0F;
+    float f32Vz = 0.0F;
+    float f32Ex = 0.0F;
+    float f32Ey = 0.0F;
+    float f32Ez = 0.0F;
+    float f32WxCorr;
+    float f32WyCorr;
+    float f32WzCorr;
+    float f32Q0Dot;
+    float f32Q1Dot;
+    float f32Q2Dot;
+    float f32Q3Dot;
 
     if ((psContext == NULL) || (psRawImu == NULL))
     {
         return;
     }
 
-    f32RollAccel = atan2f(psRawImu->sAccel.f32Y, psRawImu->sAccel.f32Z);
-    f32PitchAccel = Navigation_prvComputePitchAccelFromAccel(&psRawImu->sAccel);
+    f32q0 = psContext->sQuaternion.f32q0;
+    f32q1 = psContext->sQuaternion.f32q1;
+    f32q2 = psContext->sQuaternion.f32q2;
+    f32q3 = psContext->sQuaternion.f32q3;
 
-    f32RollGyroIntegrated = psContext->sEstimatedState.f32RollRad + (psRawImu->sGyro.f32X * psContext->sConfig.f32DtS);
-    f32PitchGyroIntegrated = psContext->sEstimatedState.f32PitchRad + (psRawImu->sGyro.f32Y * psContext->sConfig.f32DtS);
-    f32YawGyroIntegrated = psContext->sEstimatedState.f32YawRad + (psRawImu->sGyro.f32Z * psContext->sConfig.f32DtS);
+    f32Ax = psRawImu->sAccel.f32X;
+    f32Ay = psRawImu->sAccel.f32Y;
+    f32Az = psRawImu->sAccel.f32Z;
+    f32AccelNorm = sqrtf((f32Ax * f32Ax) + (f32Ay * f32Ay) + (f32Az * f32Az));
 
-    f32RollInnovation = Navigation_prvWrapAngleMinusPiToPi(f32RollAccel - f32RollGyroIntegrated);
-    f32PitchInnovation = Navigation_prvWrapAngleMinusPiToPi(f32PitchAccel - f32PitchGyroIntegrated);
-    f32OneMinusAlpha = 1.0F - psContext->sConfig.f32Alpha;
+    if (f32AccelNorm >= psContext->sConfig.f32ZeroEpsilon)
+    {
+        f32Ax /= f32AccelNorm;
+        f32Ay /= f32AccelNorm;
+        f32Az /= f32AccelNorm;
 
-    f32RollEstimated = f32RollGyroIntegrated + (f32OneMinusAlpha * f32RollInnovation);
-    f32PitchEstimated = f32PitchGyroIntegrated + (f32OneMinusAlpha * f32PitchInnovation);
-    f32YawEstimated = f32YawGyroIntegrated;
+        f32Vx = 2.0F * ((f32q1 * f32q3) - (f32q0 * f32q2));
+        f32Vy = 2.0F * ((f32q0 * f32q1) + (f32q2 * f32q3));
+        f32Vz = (f32q0 * f32q0) - (f32q1 * f32q1) - (f32q2 * f32q2) + (f32q3 * f32q3);
 
-    psContext->sEstimatedState.f32RollRad = Navigation_prvWrapAngle0To2Pi(f32RollEstimated);
-    psContext->sEstimatedState.f32PitchRad = Navigation_prvWrapAngle0To2Pi(f32PitchEstimated);
-    psContext->sEstimatedState.f32YawRad = Navigation_prvWrapAngle0To2Pi(f32YawEstimated);
+        f32Ex = (f32Ay * f32Vz) - (f32Az * f32Vy);
+        f32Ey = (f32Az * f32Vx) - (f32Ax * f32Vz);
+        f32Ez = (f32Ax * f32Vy) - (f32Ay * f32Vx);
+    }
+
+    f32WxCorr = psRawImu->sGyro.f32X + (psContext->sConfig.f32Alpha * f32Ex);
+    f32WyCorr = psRawImu->sGyro.f32Y + (psContext->sConfig.f32Alpha * f32Ey);
+    f32WzCorr = psRawImu->sGyro.f32Z + (psContext->sConfig.f32Alpha * f32Ez);
+
+    f32Q0Dot = 0.5F * ((-f32q1 * f32WxCorr) - (f32q2 * f32WyCorr) - (f32q3 * f32WzCorr));
+    f32Q1Dot = 0.5F * ((f32q0 * f32WxCorr) + (f32q2 * f32WzCorr) - (f32q3 * f32WyCorr));
+    f32Q2Dot = 0.5F * ((f32q0 * f32WyCorr) - (f32q1 * f32WzCorr) + (f32q3 * f32WxCorr));
+    f32Q3Dot = 0.5F * ((f32q0 * f32WzCorr) + (f32q1 * f32WyCorr) - (f32q2 * f32WxCorr));
+
+    psContext->sQuaternion.f32q0 = f32q0 + (f32Q0Dot * psContext->sConfig.f32DtS);
+    psContext->sQuaternion.f32q1 = f32q1 + (f32Q1Dot * psContext->sConfig.f32DtS);
+    psContext->sQuaternion.f32q2 = f32q2 + (f32Q2Dot * psContext->sConfig.f32DtS);
+    psContext->sQuaternion.f32q3 = f32q3 + (f32Q3Dot * psContext->sConfig.f32DtS);
+    Navigation_prvNormalizeQuaternion(&psContext->sQuaternion, psContext->sConfig.f32ZeroEpsilon);
+    Navigation_prvSyncAttitudeFromQuaternion(psContext);
+
     psContext->sEstimatedState.f32RollRateRadS = psRawImu->sGyro.f32X;
     psContext->sEstimatedState.f32PitchRateRadS = psRawImu->sGyro.f32Y;
     psContext->sEstimatedState.f32YawRateRadS = psRawImu->sGyro.f32Z;
@@ -243,7 +359,6 @@ static void Navigation_prvApplyInitialAttitude(ts_NavContext *psContext)
     psContext->sEstimatedState.f32PitchRateRadS = 0.0F;
     psContext->sEstimatedState.f32YawRateRadS = 0.0F;
     psContext->sEstimatedState.u32TimestampMs = 0U;
-    psContext->sEstimatedState.bIsEstimated = false;
     if (psContext->sConfig.sInitialAttitude.u8IsValid == 1U)
     {
         psContext->sEstimatedState.f32RollRad =
@@ -252,12 +367,14 @@ static void Navigation_prvApplyInitialAttitude(ts_NavContext *psContext)
             Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32PitchRad);
         psContext->sEstimatedState.f32YawRad =
             Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32YawRad);
+        Navigation_prvSyncQuaternionFromEuler(psContext);
+        psContext->sEstimatedState.bIsEstimated = true;
     }
     else
     {
-        psContext->sEstimatedState.f32RollRad = 180.0F;
-        psContext->sEstimatedState.f32PitchRad = 180.0F;
-        psContext->sEstimatedState.f32YawRad = 180.0F;
+        Navigation_prvSetIdentityQuaternion(&psContext->sQuaternion);
+        Navigation_prvSyncAttitudeFromQuaternion(psContext);
+        psContext->sEstimatedState.bIsEstimated = false;
     }
 }
 
@@ -407,7 +524,7 @@ te_NavigationRetCode Navigation_Init(ts_NavContext *psContext, const ts_NavConfi
 
     if ((psConfig->f32DtS <= 0.0F) ||
         (psConfig->f32Alpha < 0.0F) ||
-        (psConfig->f32Alpha > 1.0F) ||
+        (psConfig->f32Alpha > 10.0F) ||
         (psConfig->f32ZeroEpsilon < 0.0F) ||
         (psConfig->u8StuckThresholdCycles == 0U) ||
         ((psConfig->sInitialAttitude.u8IsValid != 0U) && (psConfig->sInitialAttitude.u8IsValid != 1U)))
@@ -417,16 +534,8 @@ te_NavigationRetCode Navigation_Init(ts_NavContext *psContext, const ts_NavConfi
 
     (void)memset(psContext, 0, sizeof(*psContext));
     psContext->sConfig = *psConfig;
-    if (psConfig->sInitialAttitude.u8IsValid == 1U)
-    {
-        psContext->sEstimatedState.f32RollRad =
-            Navigation_prvWrapAngle0To2Pi(psConfig->sInitialAttitude.f32RollRad);
-        psContext->sEstimatedState.f32PitchRad =
-            Navigation_prvWrapAngle0To2Pi(psConfig->sInitialAttitude.f32PitchRad);
-        psContext->sEstimatedState.f32YawRad =
-            Navigation_prvWrapAngle0To2Pi(psConfig->sInitialAttitude.f32YawRad);
-        psContext->sEstimatedState.bIsEstimated = true;
-    }
+    Navigation_prvSetIdentityQuaternion(&psContext->sQuaternion);
+    Navigation_prvApplyInitialAttitude(psContext);
     psContext->eLastDataStatus = NAV_STATUS_STALE;
     psContext->u8IsInitialized = 1U;
 
