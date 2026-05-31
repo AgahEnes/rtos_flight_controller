@@ -15,27 +15,32 @@
 #include "sensor_manager.h"
 #include "telemetry_task.h"
 #include "navigation_subsystem.h"
+#include "flight_control.h"
 
-#define APP_PLATFORM_SENSOR_TASK_STACK_WORDS      (512U)
-#define APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS   (512U)
-#define APP_PLATFORM_NAV_TASK_STACK_WORDS         (512U)
-#define APP_PLATFORM_SENSOR_TASK_PERIOD_MS        (10U)
-#define APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS     (100U)
-#define APP_PLATFORM_NAV_TASK_PERIOD_MS           (10U)
-#define APP_PLATFORM_SENSOR_TASK_PRIORITY         (osPriorityAboveNormal)
-#define APP_PLATFORM_TELEMETRY_TASK_PRIORITY      (osPriorityNormal)
-#define APP_PLATFORM_NAV_TASK_PRIORITY            (osPriorityAboveNormal)
-#define APP_PLATFORM_BUS_TIMEOUT_MS               (100U)
-#define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS          (20U)
-#define APP_PLATFORM_IMU_DEVICE_COUNT             (1U)
-#define APP_PLATFORM_UART_DMA_TOKEN_MAX_COUNT     (1U)
-#define APP_PLATFORM_UART_DMA_TOKEN_INITIAL_COUNT (1U)
+#define APP_PLATFORM_SENSOR_TASK_STACK_WORDS            (512U)
+#define APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS         (512U)
+#define APP_PLATFORM_NAV_TASK_STACK_WORDS               (512U)
+#define APP_PLATFORM_FLIGHT_CONTROL_TASK_STACK_WORDS    (768U)
+#define APP_PLATFORM_SENSOR_TASK_PERIOD_MS              (10U)
+#define APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS           (100U)
+#define APP_PLATFORM_NAV_TASK_PERIOD_MS                 (10U)
+#define APP_PLATFORM_FLIGHT_CONTROL_TASK_PERIOD_MS      (10U)
+#define APP_PLATFORM_SENSOR_TASK_PRIORITY               (osPriorityAboveNormal)
+#define APP_PLATFORM_TELEMETRY_TASK_PRIORITY            (osPriorityNormal)
+#define APP_PLATFORM_NAV_TASK_PRIORITY                  (osPriorityAboveNormal)
+#define APP_PLATFORM_FLIGHT_CONTROL_TASK_PRIORITY       (osPriorityAboveNormal)
+#define APP_PLATFORM_BUS_TIMEOUT_MS                     (100U)
+#define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS                (20U)
+#define APP_PLATFORM_IMU_DEVICE_COUNT                   (1U)
+#define APP_PLATFORM_UART_DMA_TOKEN_MAX_COUNT           (1U)
+#define APP_PLATFORM_UART_DMA_TOKEN_INITIAL_COUNT       (1U)
 
 static I2C_HandleTypeDef *gpxPlatformI2cHandle = NULL;
 static UART_HandleTypeDef *gpxPlatformUartHandle = NULL;
 static osThreadId_t gxAppPlatformSensorTaskHandle = NULL;
 static osThreadId_t gxAppPlatformTelemetryTaskHandle = NULL;
 static osThreadId_t gxAppPlatformNavTaskHandle = NULL;
+static osThreadId_t gxAppPlatformFlightControlTaskHandle = NULL;
 static osMutexId_t gxAppPlatformI2cBusMutex = NULL;
 static osSemaphoreId_t gxAppPlatformUartTxDmaToken = NULL;
 
@@ -46,6 +51,7 @@ static ts_ImuDevice gasImuDevices[APP_PLATFORM_IMU_DEVICE_COUNT];
 static ts_SensorManagerContext gsSensorManagerContext;
 static ts_TelemetryTaskContext gsTelemetryTaskContext;
 static ts_NavContext gsNavContext;
+static ts_FlightControlContext gsFlightControlContext;
 static uint8_t gau8TelemetryTxBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
 static uint8_t gau8TelemetryTxDmaBuffer[TELEMETRY_TASK_MIN_TX_BUFFER_LENGTH];
 
@@ -55,6 +61,8 @@ static StaticTask_t gsAppPlatformTelemetryTaskCb;
 static StackType_t gau32AppPlatformTelemetryTaskStack[APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS];
 static StaticTask_t gsAppPlatformNavTaskCb;
 static StackType_t gau32AppPlatformNavTaskStack[APP_PLATFORM_NAV_TASK_STACK_WORDS];
+static StaticTask_t gsAppPlatformFlightControlTaskCb;
+static StackType_t gau32AppPlatformFlightControlTaskStack[APP_PLATFORM_FLIGHT_CONTROL_TASK_STACK_WORDS];
 static StaticSemaphore_t gsAppPlatformI2cBusMutexCb;
 static StaticSemaphore_t gsAppPlatformUartTxDmaTokenCb;
 
@@ -136,6 +144,7 @@ static bool AppPlatformPort_prvInitMpu6050(void)
     (void)memset(&gasImuDevices, 0, sizeof(gasImuDevices));
     (void)memset(&gsSensorManagerContext, 0, sizeof(gsSensorManagerContext));
     (void)memset(&gsTelemetryTaskContext, 0, sizeof(gsTelemetryTaskContext));
+    (void)memset(&gsFlightControlContext, 0, sizeof(gsFlightControlContext));
     (void)memset(&sOpenConfig, 0, sizeof(sOpenConfig));
 
     gsMpuBusContext.pxI2cHandle = gpxPlatformI2cHandle;
@@ -201,7 +210,9 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     ts_SensorManagerConfig sSensorManagerConfig;
     ts_TelemetryTaskConfig sTelemetryConfig;
     ts_NavConfig sNavConfig;
+    ts_FlightControlConfig sFlightControlConfig;
 
+    FlightControl_InitDefaultConfig(&sFlightControlConfig);
     (void)memset(&sNavConfig, 0, sizeof(sNavConfig));
     (void)memset(&sTelemetryConfig, 0, sizeof(sTelemetryConfig));
     (void)memset(&sSensorManagerConfig, 0, sizeof(sSensorManagerConfig));
@@ -209,6 +220,7 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     Gds_ResetRawImu();
     Gds_ResetVehicleState();
     Gds_ResetImuCalibration();
+    Gds_ResetNavCommand();
     Mpu6050DdiAdapter_Bind(&gasImuDevices[0], &gsMpuDdiContext, &gsMpuHandle);
 
     sSensorManagerConfig.psImuDevices = gasImuDevices;
@@ -223,6 +235,11 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     sNavConfig.f32ZeroEpsilon = NAV_CFG_ZERO_EPSILON;
     sNavConfig.u8StuckThresholdCycles = NAV_CFG_STUCK_THRESHOLD_CYCLES;
     if (Navigation_Init(&gsNavContext, &sNavConfig) != NAV_RET_OK)
+    {
+        return false;
+    }
+
+    if (FlightControl_Init(&gsFlightControlContext, &sFlightControlConfig) != FLIGHT_CONTROL_OK)
     {
         return false;
     }
@@ -320,6 +337,30 @@ static void AppPlatformPort_prvNavTask(void *pvArgument)
     }
 }
 
+/**
+ * @brief Flight control periodic thread entry.
+ * @param pvArgument Unused thread argument.
+ * @retval None.
+ */
+static void AppPlatformPort_prvFlightControlTask(void *pvArgument)
+{
+    uint32_t u32NextWakeTick;
+    te_FlightControlRetCode eStepRet;
+
+    (void)pvArgument;
+
+    u32NextWakeTick = osKernelGetTickCount();
+    for (;;)
+    {
+        gsFlightControlContext.u32ModuleTimestampMs = osKernelGetTickCount();
+        eStepRet = FlightControl_Step(&gsFlightControlContext);
+        (void)eStepRet;
+
+        u32NextWakeTick += APP_PLATFORM_FLIGHT_CONTROL_TASK_PERIOD_MS;
+        (void)osDelayUntil(u32NextWakeTick);
+    }
+}
+
 bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle)
 {
     const osMutexAttr_t xI2cMutexAttr =
@@ -404,6 +445,15 @@ osThreadId_t AppPlatformPort_CreateTask(void)
         .cb_mem = &gsAppPlatformNavTaskCb,
         .cb_size = sizeof(gsAppPlatformNavTaskCb)
     };
+    const osThreadAttr_t xFlightControlTaskAttr =
+    {
+        .name = "app_platform_flight_control",
+        .priority = APP_PLATFORM_FLIGHT_CONTROL_TASK_PRIORITY,
+        .stack_mem = gau32AppPlatformFlightControlTaskStack,
+        .stack_size = sizeof(gau32AppPlatformFlightControlTaskStack),
+        .cb_mem = &gsAppPlatformFlightControlTaskCb,
+        .cb_size = sizeof(gsAppPlatformFlightControlTaskCb)
+    };
 
     if (gxAppPlatformSensorTaskHandle != NULL)
     {
@@ -424,6 +474,12 @@ osThreadId_t AppPlatformPort_CreateTask(void)
 
     gxAppPlatformNavTaskHandle = osThreadNew(AppPlatformPort_prvNavTask, NULL, &xNavTaskAttr);
     if (gxAppPlatformNavTaskHandle == NULL)
+    {
+        return NULL;
+    }
+
+    gxAppPlatformFlightControlTaskHandle = osThreadNew(AppPlatformPort_prvFlightControlTask, NULL, &xFlightControlTaskAttr);
+    if (gxAppPlatformFlightControlTaskHandle == NULL)
     {
         return NULL;
     }

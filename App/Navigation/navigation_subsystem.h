@@ -58,6 +58,7 @@ typedef struct
     uint8_t u8HasLastRawImu;
     uint8_t u8StuckCycleCount;
     uint8_t u8IsInitialized;
+    uint32_t u32LastExecutedCmdSeq;
     te_NavDataStatus eLastDataStatus;
 } ts_NavContext;
 

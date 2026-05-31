@@ -175,6 +175,102 @@ static void Navigation_prvEstimateComplementary(ts_NavContext *psContext, const 
     psContext->sEstimatedState.bIsEstimated = true;
 }
 
+static void Navigation_prvApplyInitialAttitude(ts_NavContext *psContext)
+{
+    if (psContext == NULL)
+    {
+        return;
+    }
+
+    psContext->sEstimatedState.f32RollRateRadS = 0.0F;
+    psContext->sEstimatedState.f32PitchRateRadS = 0.0F;
+    psContext->sEstimatedState.f32YawRateRadS = 0.0F;
+    psContext->sEstimatedState.u32TimestampMs = 0U;
+    psContext->sEstimatedState.bIsEstimated = false;
+    if (psContext->sConfig.sInitialAttitude.u8IsValid == 1U)
+    {
+        psContext->sEstimatedState.f32RollRad =
+            Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32RollRad);
+        psContext->sEstimatedState.f32PitchRad =
+            Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32PitchRad);
+        psContext->sEstimatedState.f32YawRad =
+            Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32YawRad);
+    }
+    else
+    {
+        psContext->sEstimatedState.f32RollRad = 0.0F;
+        psContext->sEstimatedState.f32PitchRad = 0.0F;
+        psContext->sEstimatedState.f32YawRad = 0.0F;
+    }
+}
+
+static void Navigation_prvResetFilter(ts_NavContext *psContext)
+{
+    if (psContext == NULL)
+    {
+        return;
+    }
+
+    Navigation_prvApplyInitialAttitude(psContext);
+    psContext->eLastDataStatus = NAV_STATUS_STALE;
+}
+
+static void Navigation_prvReinit(ts_NavContext *psContext)
+{
+    if (psContext == NULL)
+    {
+        return;
+    }
+
+    Navigation_prvApplyInitialAttitude(psContext);
+    (void)memset(&psContext->sLastRawImu, 0, sizeof(psContext->sLastRawImu));
+    psContext->u32LastProcessedTimestampMs = 0U;
+    psContext->u8HasLastRawImu = 0U;
+    psContext->u8StuckCycleCount = 0U;
+    psContext->eLastDataStatus = NAV_STATUS_STALE;
+}
+
+static void Navigation_prvHandleNavCommand(ts_NavContext *psContext)
+{
+    ts_TopicNavCommand sCommand;
+
+    if (psContext == NULL)
+    {
+        return;
+    }
+
+    if (Gds_ReadNavCommand(&sCommand) != GDS_OK)
+    {
+        return;
+    }
+
+    if (sCommand.u32Sequence == psContext->u32LastExecutedCmdSeq)
+    {
+        return;
+    }
+
+    switch (sCommand.eCommand)
+    {
+        case NAV_CMD_RESET_FILTER:
+        {
+            Navigation_prvResetFilter(psContext);
+            break;
+        }
+        case NAV_CMD_REINIT:
+        {
+            Navigation_prvReinit(psContext);
+            break;
+        }
+        case NAV_CMD_NONE:
+        default:
+        {
+            break;
+        }
+    }
+
+    psContext->u32LastExecutedCmdSeq = sCommand.u32Sequence;
+}
+
 static te_NavDataStatus Nav_ValidateImuInput(const ts_NavContext *psContext, const ts_TopicRawImu *psNewImu)
 {
     uint8_t bIsSameAsPrevious;
@@ -265,6 +361,8 @@ te_NavigationRetCode NavigationTask_Step(ts_NavContext *psContext,
     {
         return NAV_RET_ERR_STATE;
     }
+
+    Navigation_prvHandleNavCommand(psContext);
 
     eDataStatus = Nav_ValidateImuInput(psContext, psRawImu);
     psContext->eLastDataStatus = eDataStatus;

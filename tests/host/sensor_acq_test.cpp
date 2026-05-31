@@ -448,3 +448,23 @@ TEST(GlobalDataSpaceCalibrationTest, PublishAndReadRoundTripAndNullChecks)
     EXPECT_EQ(sReadBack.u32UpdateCounter, sCalibration.u32UpdateCounter);
     EXPECT_TRUE(sReadBack.bIsValid);
 }
+
+TEST(GlobalDataSpaceNavCommandTest, PublishAndReadRoundTripAndNullChecks)
+{
+    ts_TopicNavCommand sCommand {};
+    ts_TopicNavCommand sReadBack {};
+
+    sCommand.eCommand = NAV_CMD_REINIT;
+    sCommand.u32Sequence = 7U;
+    sCommand.u32TimestampMs = 777U;
+
+    Gds_ResetNavCommand();
+    EXPECT_EQ(Gds_PublishNavCommand(nullptr), GDS_ERR_ARG);
+    EXPECT_EQ(Gds_ReadNavCommand(nullptr), GDS_ERR_ARG);
+
+    ASSERT_EQ(Gds_PublishNavCommand(&sCommand), GDS_OK);
+    ASSERT_EQ(Gds_ReadNavCommand(&sReadBack), GDS_OK);
+    EXPECT_EQ(sReadBack.eCommand, NAV_CMD_REINIT);
+    EXPECT_EQ(sReadBack.u32Sequence, sCommand.u32Sequence);
+    EXPECT_EQ(sReadBack.u32TimestampMs, sCommand.u32TimestampMs);
+}

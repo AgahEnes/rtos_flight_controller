@@ -232,3 +232,58 @@ TEST(NavigationSubsystemTest, IntegrationPathReadsImuAndPublishesVehicleState)
     EXPECT_TRUE(sReadVehicleState.bIsEstimated);
     EXPECT_EQ(sReadVehicleState.u32TimestampMs, 800U);
 }
+
+TEST(NavigationSubsystemTest, ResetFilterCommandIsEdgeTriggeredBySequence)
+{
+    ts_NavContext sContext {};
+    ts_NavConfig sConfig = CreateDefaultConfig();
+    ts_TopicRawImu sRawImu = CreateValidImuSample(1000U);
+    ts_TopicVehicleState sVehicleState {};
+    ts_TopicNavCommand sCommand {};
+
+    Gds_ResetNavCommand();
+    ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+    ASSERT_TRUE(sVehicleState.bIsEstimated);
+
+    sCommand.eCommand = NAV_CMD_RESET_FILTER;
+    sCommand.u32Sequence = 10U;
+    sCommand.u32TimestampMs = 1000U;
+    ASSERT_EQ(Gds_PublishNavCommand(&sCommand), GDS_OK);
+
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+    EXPECT_EQ(sContext.u32LastExecutedCmdSeq, 10U);
+    EXPECT_EQ(sContext.eLastDataStatus, NAV_STATUS_STALE);
+    EXPECT_FALSE(sVehicleState.bIsEstimated);
+
+    sContext.sEstimatedState.bIsEstimated = true;
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+    EXPECT_TRUE(sVehicleState.bIsEstimated);
+    EXPECT_EQ(sContext.u32LastExecutedCmdSeq, 10U);
+}
+
+TEST(NavigationSubsystemTest, ReinitCommandClearsInternalTracking)
+{
+    ts_NavContext sContext {};
+    ts_NavConfig sConfig = CreateDefaultConfig();
+    ts_TopicRawImu sRawImu = CreateValidImuSample(1100U);
+    ts_TopicVehicleState sVehicleState {};
+    ts_TopicNavCommand sCommand {};
+
+    Gds_ResetNavCommand();
+    ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+    ASSERT_TRUE(sContext.u8HasLastRawImu != 0U);
+    ASSERT_TRUE(sContext.sEstimatedState.bIsEstimated);
+
+    sCommand.eCommand = NAV_CMD_REINIT;
+    sCommand.u32Sequence = 21U;
+    sCommand.u32TimestampMs = 1100U;
+    ASSERT_EQ(Gds_PublishNavCommand(&sCommand), GDS_OK);
+
+    sRawImu.u32TimestampMs = 1110U;
+    ASSERT_EQ(NavigationTask_Step(&sContext, &sRawImu, &sVehicleState), NAV_RET_OK);
+    EXPECT_EQ(sContext.u32LastExecutedCmdSeq, 21U);
+    EXPECT_EQ(sContext.u8StuckCycleCount, 0U);
+    EXPECT_TRUE(sContext.u8HasLastRawImu != 0U);
+}

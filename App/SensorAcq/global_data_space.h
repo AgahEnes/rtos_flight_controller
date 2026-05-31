@@ -47,6 +47,20 @@ typedef struct
 
 typedef enum
 {
+    NAV_CMD_NONE = 0,
+    NAV_CMD_RESET_FILTER,
+    NAV_CMD_REINIT
+} te_NavCmdType;
+
+typedef struct
+{
+    te_NavCmdType eCommand;
+    uint32_t u32Sequence;
+    uint32_t u32TimestampMs;
+} ts_TopicNavCommand;
+
+typedef enum
+{
     GDS_OK = 0,
     GDS_ERR_ARG,
     GDS_ERR_INCONSISTENT_READ
@@ -61,6 +75,9 @@ te_GdsRetCode Gds_ReadVehicleState(ts_TopicVehicleState *psVehicleState);
 void Gds_ResetImuCalibration(void);
 te_GdsRetCode Gds_PublishImuCalibration(const ts_TopicImuCalibration *psCalibration);
 te_GdsRetCode Gds_ReadImuCalibration(ts_TopicImuCalibration *psCalibration);
+void Gds_ResetNavCommand(void);
+te_GdsRetCode Gds_PublishNavCommand(const ts_TopicNavCommand *psCommand);
+te_GdsRetCode Gds_ReadNavCommand(ts_TopicNavCommand *psCommand);
 
 #ifdef __cplusplus
 }
