@@ -8,6 +8,8 @@ export const MSG_ID_IMU = 0x10;
 export const IMU_FRAME_LENGTH = 38;
 export const EXTENDED_FRAME_LENGTH = 71;
 export const EXTENDED_PAYLOAD_LENGTH = 65;
+export const ASCII_PACKET_START = 0x24;
+export const ASCII_LINE_FEED = 0x0a;
 
 export function crc16CcittFalse(bytes) {
   let crc = 0xffff;
@@ -23,6 +25,111 @@ export function crc16CcittFalse(bytes) {
 
 function readFloat32Le(view, offset) {
   return view.getFloat32(offset, true);
+}
+
+function readFloat32FromDecimalBytes(byte0, byte1, byte2, byte3) {
+  const buffer = new ArrayBuffer(4);
+  const bytes = new Uint8Array(buffer);
+  bytes[0] = byte0;
+  bytes[1] = byte1;
+  bytes[2] = byte2;
+  bytes[3] = byte3;
+  return new DataView(buffer).getFloat32(0, true);
+}
+
+function parseFiniteFloat(value, fallback = 0) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseFiniteInt(value, fallback = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function normalizeFirmwareMode(modeText) {
+  const mode = String(modeText ?? "").trim().toUpperCase();
+  if (mode === "BALANCED" || mode === "DENGEDE") return "BALANCED";
+  if (mode === "RECOVERING" || mode === "ACQUIRING" || mode === "DEGRADED") return mode;
+  if (mode === "FAILURE" || mode === "ERROR" || mode === "FAULT") return "FAILURE";
+  return mode.length > 0 ? mode : "ACQUIRING";
+}
+
+function parseAsciiChecksum(lineBytes, starIndex) {
+  let checksum = 0;
+  for (let i = 1; i < starIndex; i += 1) {
+    checksum ^= lineBytes[i];
+  }
+  return checksum & 0xff;
+}
+
+function parseRtosFusionLine(lineBytes) {
+  const cleanBytes = lineBytes[lineBytes.length - 1] === ASCII_LINE_FEED
+    ? lineBytes.slice(0, lineBytes.length - 1)
+    : lineBytes;
+  const trimmedBytes = cleanBytes[cleanBytes.length - 1] === 0x0d
+    ? cleanBytes.slice(0, cleanBytes.length - 1)
+    : cleanBytes;
+  const starIndex = trimmedBytes.indexOf(0x2a);
+
+  if (trimmedBytes[0] !== ASCII_PACKET_START || starIndex < 0 || starIndex + 2 >= trimmedBytes.length) {
+    return null;
+  }
+
+  const receivedChecksum = Number.parseInt(String.fromCharCode(trimmedBytes[starIndex + 1], trimmedBytes[starIndex + 2]), 16);
+  if (!Number.isFinite(receivedChecksum) || parseAsciiChecksum(trimmedBytes, starIndex) !== receivedChecksum) {
+    return null;
+  }
+
+  const body = String.fromCharCode(...trimmedBytes.slice(1, starIndex));
+  const fields = body.split(",");
+  if (fields[0] !== "RTOSFUS" || fields.length < 17) {
+    return null;
+  }
+
+  const pressureHpa = fields.length >= 24
+    ? readFloat32FromDecimalBytes(
+      parseFiniteInt(fields[20], 0),
+      parseFiniteInt(fields[21], 0),
+      parseFiniteInt(fields[22], 0),
+      parseFiniteInt(fields[23], 0)
+    )
+    : null;
+
+  return {
+    type: "fusion",
+    packetFormat: "rtosfus-ascii",
+    messageId: "RTOSFUS",
+    sequence: null,
+    timestampMs: parseFiniteInt(fields[1], 0),
+    accel: {
+      x: parseFiniteFloat(fields[10], 0),
+      y: parseFiniteFloat(fields[11], 0),
+      z: parseFiniteFloat(fields[12], 0)
+    },
+    gyro: {
+      x: parseFiniteFloat(fields[7], 0),
+      y: parseFiniteFloat(fields[8], 0),
+      z: parseFiniteFloat(fields[9], 0)
+    },
+    temperatureC: parseFiniteFloat(fields[15], 0),
+    pressureHpa,
+    pressurePa: pressureHpa === null ? null : pressureHpa * 100.0,
+    altitudeM: parseFiniteFloat(fields[14], 0),
+    fixType: fields.length > 24 ? parseFiniteInt(fields[24], 0) : 0,
+    attitudeDeg: {
+      rollDeg: parseFiniteFloat(fields[4], 0),
+      pitchDeg: parseFiniteFloat(fields[5], 0),
+      yawDeg: parseFiniteFloat(fields[6], 0)
+    },
+    servo: {
+      aDeg: parseFiniteFloat(fields[7], 0),
+      bDeg: parseFiniteFloat(fields[8], 0)
+    },
+    mode: normalizeFirmwareMode(fields[16]),
+    firmwareMode: String(fields[16] ?? ""),
+    rawFields: fields
+  };
 }
 
 function parseImuFrame(frame) {
@@ -133,6 +240,22 @@ export class TelemetryParser {
         break;
       }
 
+      if (this.buffer[0] === ASCII_PACKET_START) {
+        const lineFeedIndex = this.buffer.indexOf(ASCII_LINE_FEED);
+        if (lineFeedIndex < 0) {
+          break;
+        }
+        const lineBytes = this.buffer.slice(0, lineFeedIndex + 1);
+        this.buffer = this.buffer.slice(lineFeedIndex + 1);
+        const packet = parseRtosFusionLine(lineBytes);
+        if (packet !== null) {
+          frames.push(packet);
+        } else {
+          this.crcErrors += 1;
+        }
+        continue;
+      }
+
       const frameLength = this.frameLengthForCurrentHeader();
       if (frameLength === 0) {
         this.droppedBytes += 1;
@@ -169,6 +292,9 @@ export class TelemetryParser {
       if (this.isKnownSyncPair(this.buffer[i], this.buffer[i + 1])) {
         return i;
       }
+      if (this.buffer[i] === ASCII_PACKET_START) {
+        return i;
+      }
     }
     return -1;
   }
@@ -181,7 +307,7 @@ export class TelemetryParser {
   }
 
   isPossiblePartialSync(byte) {
-    return byte === LEGACY_SYNC_0 || byte === EXTENDED_SYNC_0;
+    return byte === LEGACY_SYNC_0 || byte === EXTENDED_SYNC_0 || byte === ASCII_PACKET_START;
   }
 
   isExtendedFrame(frame) {

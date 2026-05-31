@@ -229,6 +229,11 @@ h1 {
   border-color: #9a7a26;
 }
 
+.mode-pill[data-mode="degraded"] {
+  color: #f1c65b;
+  border-color: #9a7a26;
+}
+
 .mode-pill[data-mode="failure"] {
   color: #ff856f;
   border-color: #9d4c42;

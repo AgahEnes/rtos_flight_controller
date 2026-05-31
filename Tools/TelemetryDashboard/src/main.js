@@ -120,7 +120,11 @@ function updateUi(snapshot, sourceLabel) {
   ui.yaw.textContent = `${fmt(snapshot.yawDeg)} deg`;
   ui.tilt.textContent = `${fmt(snapshot.tiltDeg)} deg`;
   ui.frames.textContent = String(frameCount);
-  ui.packet.textContent = latestSnapshot.packetFormat === "extended-imu-sensors" ? "EXT 0x10" : "IMU 0x10";
+  ui.packet.textContent = latestSnapshot.packetFormat === "extended-imu-sensors"
+    ? "EXT 0x10"
+    : latestSnapshot.packetFormat === "rtosfus-ascii"
+      ? "RTOSFUS"
+      : "IMU 0x10";
   ui.accelX.textContent = `${fmt(snapshot.accel.x, 2)} m/s2`;
   ui.accelY.textContent = `${fmt(snapshot.accel.y, 2)} m/s2`;
   ui.accelZ.textContent = `${fmt(snapshot.accel.z, 2)} m/s2`;
@@ -139,6 +143,22 @@ function updateUi(snapshot, sourceLabel) {
 function ingestSample(sample, sourceLabel) {
   latestSnapshot = updateEstimatorFromImu(estimator, sample);
   latestSnapshot.packetFormat = sample.packetFormat;
+  if (sample.attitudeDeg) {
+    latestSnapshot.rollDeg = sample.attitudeDeg.rollDeg;
+    latestSnapshot.pitchDeg = sample.attitudeDeg.pitchDeg;
+    latestSnapshot.yawDeg = sample.attitudeDeg.yawDeg;
+    latestSnapshot.tiltDeg = Math.sqrt(
+      (latestSnapshot.rollDeg * latestSnapshot.rollDeg) +
+      (latestSnapshot.pitchDeg * latestSnapshot.pitchDeg)
+    );
+  }
+  if (sample.servo) {
+    latestSnapshot.servoA = sample.servo.aDeg;
+    latestSnapshot.servoB = sample.servo.bDeg;
+  }
+  if (sample.mode) {
+    latestSnapshot.mode = sample.mode;
+  }
   latestSourceLabel = sourceLabel;
   frameCount += 1;
   lastPacketAt = performance.now();
@@ -314,6 +334,11 @@ ui.connectButton.addEventListener("click", () => {
 ui.wifiButton.addEventListener("click", connectWifi);
 ui.simButton.addEventListener("click", toggleSimulation);
 ui.resetButton.addEventListener("click", resetDashboard);
+
+const initialConnectionMode = new URLSearchParams(window.location.search).get("connect");
+if (initialConnectionMode === "wifi") {
+  window.setTimeout(connectWifi, 0);
+}
 
 function animate(timeMs) {
   scene.render(timeMs);
