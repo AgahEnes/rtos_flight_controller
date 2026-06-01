@@ -42,6 +42,7 @@ add_library(driver_test_objs STATIC
   mocks/mock_lock_time.c
 )
 target_include_directories(driver_test_objs PUBLIC
+  ../../Drivers
   ../../Drivers/mpu6050
   .
 )
@@ -50,6 +51,7 @@ add_library(servo_driver_test_objs STATIC
   ../../Drivers/servo/servo_driver.c
 )
 target_include_directories(servo_driver_test_objs PUBLIC
+  ../../Drivers
   ../../Drivers/servo
   .
 )

@@ -8,25 +8,8 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "driver_types.h"
 #include "servo_hal.h"
-
-/* MPU6050 header'ı bu global dönüş tipini zaten tanımladıysa servo header tekrar tanımlamaz; amaç aynı proje içinde tek dönüş sözleşmesini paylaşmaktır. */
-#if !defined(MPU6050_DRIVER_H_) && !defined(SERVO_DRIVER_RETCODE_DEFINED)
-#define SERVO_DRIVER_RETCODE_DEFINED
-typedef enum
-{
-    DRIVER_OK = 0,             /* İşlem başarılı; tüm sürücü katmanlarında ortak pozitif sonuç kodudur. */
-    DRIVER_ERR_NULL_PTR,       /* NULL pointer hatası; MISRA benzeri savunmacı API kontrolü tarafından döndürülür. */
-    DRIVER_ERR_INVALID_ARG,    /* Geçersiz değer hatası; açı, pulse veya ioctl argümanı sözleşmeye uymadığında kullanılır. */
-    DRIVER_ERR_STATE,          /* Durum makinesi hatası; örneğin UNINIT veya ERROR durumunda komut verilirse kullanılır. */
-    DRIVER_ERR_BUS,            /* Bus/peripheral erişim hatası; servo port katmanında timer/PWM erişim hatasını temsil eder. */
-    DRIVER_ERR_TIMEOUT,        /* Kilit veya port işlemi zaman aşımına uğradı; RTOS kaynak yönetimi için kullanılır. */
-    DRIVER_ERR_CONFIG,         /* Open konfigürasyonu eksik veya tutarsız; dependency injection doğrulaması için kullanılır. */
-    DRIVER_ERR_NOT_SUPPORTED,  /* API yüzeyinde bulunan fakat bu servo sınıfında anlamlı olmayan işlem için kullanılır. */
-    DRIVER_ERR_WHOAMI,         /* Class-A sensörlerden miras kalan ortak kod; servo Class-B olduğu için normalde kullanılmaz. */
-    DRIVER_ERR_IO              /* Genel I/O hatası; port katmanı ayrıntıyı sınıflandıramadığında kullanılır. */
-} te_Driver_RetCode;
-#endif
 
 typedef te_Driver_RetCode (*tpfn_ServoPulseWrite)(uint32_t u32PulseWidthUs, void *vpCtx);
 /* PWM port callback'i; çekirdek driver'ın hesapladığı mikro-saniye darbesini STM32 timer CCR değerine çevirmek için port katmanına gider. */

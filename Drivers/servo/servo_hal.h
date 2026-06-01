@@ -34,6 +34,18 @@ extern "C" {
 /* Float karşılaştırmalarında sıfıra çok yakın değerleri ayırt etmek için kullanılan küçük eşik; konfigürasyon doğrulama katmanı içindir. */
 #define SERVO_FLOAT_EPSILON                       (0.000001F)
 
+/* Float'tan uint32_t'ye yuvarlama ve açı aralığının orta noktası hesabı için yarım birim sabiti. */
+#define SERVO_FLOAT_ROUND_HALF                    (0.5F)
+
+/* Mikro-saniye darbesini timer counter tick'ine çevirirken tam sayı yuvarlama için yarım saniye ölçeği (µs²/s). */
+#define SERVO_US_ROUND_HALF                       (500000ULL)
+
+/* Saniye başına mikro-saniye; pulse genişliği ile counter clock çarpımını tick değerine ölçekler. */
+#define SERVO_US_PER_SEC                          (1000000ULL)
+
+/* STM32'de APB prescaler ≠ 1 iken timer kernel clock'ın PCLK'nın bu katı olması (RM referans davranışı). */
+#define SERVO_APB_TIMER_CLK_MULT                  (2U)
+
 /* Pi sabiti; derece/radyan dönüşümleri ve SG90 açı sınırı makroları için platform bağımsız matematik sabitidir. */
 #define SERVO_PI_F                                (3.14159265358979323846F)
 

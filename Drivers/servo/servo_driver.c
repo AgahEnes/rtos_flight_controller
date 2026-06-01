@@ -358,7 +358,7 @@ static uint32_t Servo_prvAngleToPulseUs(const ts_Servo_Handle *psHandle, float f
     }
     else
     {
-        u32PulseUs = (uint32_t)(f32PulseUs + 0.5F);
+        u32PulseUs = (uint32_t)(f32PulseUs + SERVO_FLOAT_ROUND_HALF);
     }
 
     return Servo_prvClampU32(u32PulseUs, psHandle->u32MinPulseUs, psHandle->u32MaxPulseUs);
@@ -580,7 +580,7 @@ te_Driver_RetCode Servo_Open(ts_Servo_Handle *psHandle, const ts_Servo_OpenConfi
     psHandle->sLockInterface = psConfig->sLockInterface;
     psHandle->sTimingInterface = psConfig->sTimingInterface;
 
-    f32CenterAngleRad = (psHandle->f32MinAngleRad + psHandle->f32MaxAngleRad) * 0.5F;
+    f32CenterAngleRad = (psHandle->f32MinAngleRad + psHandle->f32MaxAngleRad) * SERVO_FLOAT_ROUND_HALF;
     psHandle->f32CurrentAngleRad = Servo_prvClampF32(f32CenterAngleRad,
                                                      psHandle->f32MinAngleRad,
                                                      psHandle->f32MaxAngleRad);
@@ -881,7 +881,7 @@ te_Driver_RetCode Servo_Test(ts_Servo_Handle *psHandle, uint32_t u32TimeoutMs)
     u32StartTickMs = Servo_prvGetTickMs(psHandle);
 
     af32PhysicalAngles[0] = psHandle->f32MinAngleRad;
-    af32PhysicalAngles[1] = (psHandle->f32MinAngleRad + psHandle->f32MaxAngleRad) * 0.5F;
+    af32PhysicalAngles[1] = (psHandle->f32MinAngleRad + psHandle->f32MaxAngleRad) * SERVO_FLOAT_ROUND_HALF;
     af32PhysicalAngles[2] = psHandle->f32MaxAngleRad;
     af32PhysicalAngles[3] = af32PhysicalAngles[1];
 

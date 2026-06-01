@@ -83,7 +83,7 @@ static uint32_t Servo_Stm32Hal_prvGetTimerKernelClockHz(const ts_Servo_Stm32Port
         }
         else
         {
-            u32TimerClockHz = u32PclkHz * 2U;
+            u32TimerClockHz = u32PclkHz * SERVO_APB_TIMER_CLK_MULT;
         }
     }
     else
@@ -95,7 +95,7 @@ static uint32_t Servo_Stm32Hal_prvGetTimerKernelClockHz(const ts_Servo_Stm32Port
         }
         else
         {
-            u32TimerClockHz = u32PclkHz * 2U;
+            u32TimerClockHz = u32PclkHz * SERVO_APB_TIMER_CLK_MULT;
         }
     }
 
@@ -158,7 +158,8 @@ te_Driver_RetCode Servo_Stm32Hal_PulseWrite(uint32_t u32PulseWidthUs, void *vpCt
         return DRIVER_ERR_CONFIG;
     }
 
-    u64CompareValue = (((uint64_t)u32PulseWidthUs * (uint64_t)u32CounterClockHz) + 500000ULL) / 1000000ULL;
+    u64CompareValue = (((uint64_t)u32PulseWidthUs * (uint64_t)u32CounterClockHz) + SERVO_US_ROUND_HALF) /
+                      SERVO_US_PER_SEC;
     if (u64CompareValue > (uint64_t)u32AutoReload)
     {
         u64CompareValue = (uint64_t)u32AutoReload;

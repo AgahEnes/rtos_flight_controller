@@ -63,6 +63,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}/Drivers
     ${MPU6050_DRV_DIR}
     ${SERVO_DRV_DIR}
     ${APP_DIR}/SensorAcq
