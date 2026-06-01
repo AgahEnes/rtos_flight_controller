@@ -46,6 +46,14 @@ target_include_directories(driver_test_objs PUBLIC
   .
 )
 
+add_library(servo_driver_test_objs STATIC
+  ../../Drivers/servo/servo_driver.c
+)
+target_include_directories(servo_driver_test_objs PUBLIC
+  ../../Drivers/servo
+  .
+)
+
 add_executable(app_unit_tests
   sensor_acq_test.cpp
 )
@@ -66,7 +74,13 @@ add_executable(mpu_driver_tests
 )
 target_link_libraries(mpu_driver_tests PRIVATE driver_test_objs GTest::gtest_main m)
 
+add_executable(servo_driver_tests
+  servo_driver_test.cpp
+)
+target_link_libraries(servo_driver_tests PRIVATE servo_driver_test_objs GTest::gtest_main)
+
 add_test(NAME app_unit_tests COMMAND app_unit_tests)
 add_test(NAME nav_unit_tests COMMAND nav_unit_tests)
 add_test(NAME flight_control_unit_tests COMMAND flight_control_unit_tests)
 add_test(NAME mpu_driver_tests COMMAND mpu_driver_tests)
+add_test(NAME servo_driver_tests COMMAND servo_driver_tests)
