@@ -221,6 +221,7 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     Gds_ResetVehicleState();
     Gds_ResetImuCalibration();
     Gds_ResetNavCommand();
+    Gds_ResetActuatorCmd();
     Mpu6050DdiAdapter_Bind(&gasImuDevices[0], &gsMpuDdiContext, &gsMpuHandle);
 
     sSensorManagerConfig.psImuDevices = gasImuDevices;

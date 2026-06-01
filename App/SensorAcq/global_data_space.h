@@ -68,6 +68,14 @@ typedef struct
     uint32_t u32TimestampMs;
 } ts_TopicNavCommand;
 
+typedef struct
+{
+    float f32FinAngleRad[4];
+    uint32_t u32TimestampMs;
+    uint32_t u32Sequence;
+    bool bIsActive;
+} ts_TopicActuatorCmd;
+
 typedef enum
 {
     GDS_OK = 0,
@@ -87,6 +95,9 @@ te_GdsRetCode Gds_ReadImuCalibration(ts_TopicImuCalibration *psCalibration);
 void Gds_ResetNavCommand(void);
 te_GdsRetCode Gds_PublishNavCommand(const ts_TopicNavCommand *psCommand);
 te_GdsRetCode Gds_ReadNavCommand(ts_TopicNavCommand *psCommand);
+void Gds_ResetActuatorCmd(void);
+te_GdsRetCode Gds_PublishActuatorCmd(const ts_TopicActuatorCmd *psCommand);
+te_GdsRetCode Gds_ReadActuatorCmd(ts_TopicActuatorCmd *psCommand);
 
 #ifdef __cplusplus
 }

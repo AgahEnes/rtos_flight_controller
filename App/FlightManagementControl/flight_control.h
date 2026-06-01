@@ -34,6 +34,15 @@ typedef struct
 
 typedef struct
 {
+    float f32Kp;
+    float f32Ki;
+    float f32Kd;
+    float f32Integral;
+    float f32IntegralClamp;
+} ts_FmcPidController;
+
+typedef struct
+{
     uint32_t u32PbitPassCycles;
     uint32_t u32MaxConsecutiveInvalidImuCycles;
     uint32_t u32StationaryWindowCycles;
@@ -77,6 +86,11 @@ typedef struct
     ts_FlightControlWelford sCalibrationGyroXStats;
     ts_FlightControlWelford sCalibrationGyroYStats;
     ts_FlightControlWelford sCalibrationGyroZStats;
+    ts_FmcPidController sRollPid;
+    ts_FmcPidController sPitchPid;
+    ts_FmcPidController sYawPid;
+    uint32_t u32BoostElapsedCycles;
+    uint32_t u32ActuatorCommandSequence;
     uint8_t u8PreflightSubState;
     uint8_t u8HasLastImuTimestamp;
     uint8_t u8PreflightReinitIssued;

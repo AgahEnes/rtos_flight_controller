@@ -710,3 +710,31 @@ TEST(GlobalDataSpaceNavCommandTest, PublishAndReadRoundTripAndNullChecks)
     EXPECT_EQ(sReadBack.u32Sequence, sCommand.u32Sequence);
     EXPECT_EQ(sReadBack.u32TimestampMs, sCommand.u32TimestampMs);
 }
+
+TEST(GlobalDataSpaceActuatorCmdTest, PublishAndReadRoundTripAndNullChecks)
+{
+    ts_TopicActuatorCmd sCommand {};
+    ts_TopicActuatorCmd sReadBack {};
+
+    sCommand.f32FinAngleRad[0] = 0.10F;
+    sCommand.f32FinAngleRad[1] = -0.20F;
+    sCommand.f32FinAngleRad[2] = 0.30F;
+    sCommand.f32FinAngleRad[3] = -0.40F;
+    sCommand.u32TimestampMs = 555U;
+    sCommand.u32Sequence = 3U;
+    sCommand.bIsActive = true;
+
+    Gds_ResetActuatorCmd();
+    EXPECT_EQ(Gds_PublishActuatorCmd(nullptr), GDS_ERR_ARG);
+    EXPECT_EQ(Gds_ReadActuatorCmd(nullptr), GDS_ERR_ARG);
+
+    ASSERT_EQ(Gds_PublishActuatorCmd(&sCommand), GDS_OK);
+    ASSERT_EQ(Gds_ReadActuatorCmd(&sReadBack), GDS_OK);
+    EXPECT_FLOAT_EQ(sReadBack.f32FinAngleRad[0], sCommand.f32FinAngleRad[0]);
+    EXPECT_FLOAT_EQ(sReadBack.f32FinAngleRad[1], sCommand.f32FinAngleRad[1]);
+    EXPECT_FLOAT_EQ(sReadBack.f32FinAngleRad[2], sCommand.f32FinAngleRad[2]);
+    EXPECT_FLOAT_EQ(sReadBack.f32FinAngleRad[3], sCommand.f32FinAngleRad[3]);
+    EXPECT_EQ(sReadBack.u32TimestampMs, sCommand.u32TimestampMs);
+    EXPECT_EQ(sReadBack.u32Sequence, sCommand.u32Sequence);
+    EXPECT_TRUE(sReadBack.bIsActive);
+}
