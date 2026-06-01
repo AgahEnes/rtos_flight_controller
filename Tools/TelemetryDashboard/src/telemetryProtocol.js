@@ -47,6 +47,86 @@ function parseFiniteInt(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function isDecimalByteField(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d{1,3}$/.test(text)) {
+    return false;
+  }
+
+  const parsed = Number.parseInt(text, 10);
+  return parsed >= 0 && parsed <= 255;
+}
+
+function parseOptionalFloat(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readInt8(byte) {
+  return byte > 127 ? byte - 256 : byte;
+}
+
+function normalizeServoLabel(label) {
+  const normalized = String(label ?? "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (normalized === "SA" || normalized === "SERVOA" || normalized === "FINA" || normalized === "CANARDA" || normalized === "S1") return 0;
+  if (normalized === "SB" || normalized === "SERVOB" || normalized === "FINB" || normalized === "CANARDB" || normalized === "S2") return 1;
+  if (normalized === "SC" || normalized === "SERVOC" || normalized === "FINC" || normalized === "CANARDC" || normalized === "S3") return 2;
+  if (normalized === "SD" || normalized === "SERVOD" || normalized === "FIND" || normalized === "CANARDD" || normalized === "S4") return 3;
+  return -1;
+}
+
+function parseServoFromNamedFields(fields) {
+  const finsDeg = [0, 0, 0, 0];
+  const found = [false, false, false, false];
+
+  for (const field of fields) {
+    const match = String(field).match(/^\s*([A-Za-z0-9_ -]+)\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*$/);
+    if (match === null) {
+      continue;
+    }
+
+    const index = normalizeServoLabel(match[1]);
+    const value = parseOptionalFloat(match[2]);
+    if (index >= 0 && value !== null) {
+      finsDeg[index] = value;
+      found[index] = true;
+    }
+  }
+
+  return found.some(Boolean)
+    ? {
+      aDeg: finsDeg[0],
+      bDeg: finsDeg[1],
+      cDeg: finsDeg[2],
+      dDeg: finsDeg[3],
+      finsDeg
+    }
+    : null;
+}
+
+function parseServoFromNumericTail(fields) {
+  if (fields.length < 29) {
+    return null;
+  }
+
+  const values = fields.slice(25, 29).map((field) => parseOptionalFloat(field));
+  if (values.some((value) => value === null)) {
+    return null;
+  }
+
+  return {
+    aDeg: values[0],
+    bDeg: values[1],
+    cDeg: values[2],
+    dDeg: values[3],
+    finsDeg: values
+  };
+}
+
+function parseServoFromAsciiFields(fields) {
+  return parseServoFromNamedFields(fields) ?? parseServoFromNumericTail(fields);
+}
+
 function normalizeFirmwareMode(modeText) {
   const mode = String(modeText ?? "").trim().toUpperCase();
   if (mode === "BALANCED" || mode === "DENGEDE") return "BALANCED";
@@ -87,7 +167,9 @@ function parseRtosFusionLine(lineBytes) {
     return null;
   }
 
-  const pressureHpa = fields.length >= 24
+  const servo = parseServoFromAsciiFields(fields);
+  const hasPressureBytes = fields.length >= 24 && fields.slice(20, 24).every(isDecimalByteField);
+  const pressureHpa = hasPressureBytes
     ? readFloat32FromDecimalBytes(
       parseFiniteInt(fields[20], 0),
       parseFiniteInt(fields[21], 0),
@@ -122,10 +204,7 @@ function parseRtosFusionLine(lineBytes) {
       pitchDeg: parseFiniteFloat(fields[5], 0),
       yawDeg: parseFiniteFloat(fields[6], 0)
     },
-    servo: {
-      aDeg: parseFiniteFloat(fields[7], 0),
-      bDeg: parseFiniteFloat(fields[8], 0)
-    },
+    servo,
     mode: normalizeFirmwareMode(fields[16]),
     firmwareMode: String(fields[16] ?? ""),
     rawFields: fields
@@ -156,6 +235,15 @@ function parseImuFrame(frame) {
 
 function parseExtendedImuFrame(frame) {
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
+  const reservedServoBytes = [frame[65], frame[66], frame[67], frame[68]];
+  const servo = {
+    aDeg: readInt8(reservedServoBytes[0]),
+    bDeg: readInt8(reservedServoBytes[1]),
+    cDeg: readInt8(reservedServoBytes[2]),
+    dDeg: readInt8(reservedServoBytes[3]),
+    finsDeg: reservedServoBytes.map(readInt8)
+  };
+
   return {
     type: "imu",
     packetFormat: "extended-imu-sensors",
@@ -186,6 +274,7 @@ function parseExtendedImuFrame(frame) {
     gnssAltitudeM: readFloat32Le(view, 60),
     altitudeM: readFloat32Le(view, 60),
     fixType: frame[64],
+    servo,
     reserved: {
       byte65: frame[65],
       byte66: frame[66],

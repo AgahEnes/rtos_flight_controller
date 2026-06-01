@@ -64,6 +64,8 @@ export function attitudeSnapshot(estimator, sample) {
   const tiltDeg = Math.sqrt((rollDeg * rollDeg) + (pitchDeg * pitchDeg));
   const servoA = clamp(-pitchDeg * 1.15, -35, 35);
   const servoB = clamp(rollDeg * 1.15, -35, 35);
+  const servoC = clamp(pitchDeg * 1.15, -35, 35);
+  const servoD = clamp(-rollDeg * 1.15, -35, 35);
   const mode = deriveMode(tiltDeg, sample);
 
   return {
@@ -74,6 +76,7 @@ export function attitudeSnapshot(estimator, sample) {
     servoA,
     servoB,
     mode,
+    servosDeg: [servoA, servoB, servoC, servoD],
     timestampMs: sample.timestampMs,
     accel: sample.accel,
     gyro: sample.gyro,

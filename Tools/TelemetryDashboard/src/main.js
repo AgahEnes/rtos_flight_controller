@@ -67,8 +67,12 @@ const ui = {
   altitude: document.getElementById("altitudeValue"),
   servoA: document.getElementById("servoAValue"),
   servoB: document.getElementById("servoBValue"),
+  servoC: document.getElementById("servoCValue"),
+  servoD: document.getElementById("servoDValue"),
   servoAText: document.getElementById("servoAText"),
-  servoBText: document.getElementById("servoBText")
+  servoBText: document.getElementById("servoBText"),
+  servoCText: document.getElementById("servoCText"),
+  servoDText: document.getElementById("servoDText")
 };
 
 const initialWsUrl = new URLSearchParams(window.location.search).get("ws");
@@ -95,6 +99,23 @@ let latestSnapshot = attitudeSnapshot(estimator, {
 
 function fmt(value, digits = 1) {
   return Number.isFinite(value) ? value.toFixed(digits) : "--";
+}
+
+function normalizeServoAngles(source) {
+  if (Array.isArray(source?.servosDeg) && source.servosDeg.length >= 4) {
+    return source.servosDeg.slice(0, 4).map((value) => Number.isFinite(value) ? value : 0);
+  }
+
+  if (Array.isArray(source?.finsDeg) && source.finsDeg.length >= 4) {
+    return source.finsDeg.slice(0, 4).map((value) => Number.isFinite(value) ? value : 0);
+  }
+
+  const servoA = Number.isFinite(source?.servoA) ? source.servoA : Number.isFinite(source?.aDeg) ? source.aDeg : 0;
+  const servoB = Number.isFinite(source?.servoB) ? source.servoB : Number.isFinite(source?.bDeg) ? source.bDeg : 0;
+  const servoC = Number.isFinite(source?.servoC) ? source.servoC : Number.isFinite(source?.cDeg) ? source.cDeg : -servoA;
+  const servoD = Number.isFinite(source?.servoD) ? source.servoD : Number.isFinite(source?.dDeg) ? source.dDeg : -servoB;
+
+  return [servoA, servoB, servoC, servoD];
 }
 
 function setModeVisual(mode) {
@@ -134,10 +155,15 @@ function updateUi(snapshot, sourceLabel) {
   ui.temp.textContent = `${fmt(snapshot.temperatureC, 2)} C`;
   ui.pressure.textContent = snapshot.pressurePa === null ? "-- Pa" : `${fmt(snapshot.pressurePa, 0)} Pa`;
   ui.altitude.textContent = snapshot.altitudeM === null ? "-- m" : `${fmt(snapshot.altitudeM, 2)} m`;
-  ui.servoA.value = snapshot.servoA;
-  ui.servoB.value = snapshot.servoB;
-  ui.servoAText.textContent = `${fmt(snapshot.servoA)} deg`;
-  ui.servoBText.textContent = `${fmt(snapshot.servoB)} deg`;
+  const servosDeg = normalizeServoAngles(snapshot);
+  ui.servoA.value = servosDeg[0];
+  ui.servoB.value = servosDeg[1];
+  ui.servoC.value = servosDeg[2];
+  ui.servoD.value = servosDeg[3];
+  ui.servoAText.textContent = `${fmt(servosDeg[0])} deg`;
+  ui.servoBText.textContent = `${fmt(servosDeg[1])} deg`;
+  ui.servoCText.textContent = `${fmt(servosDeg[2])} deg`;
+  ui.servoDText.textContent = `${fmt(servosDeg[3])} deg`;
 }
 
 function ingestSample(sample, sourceLabel) {
@@ -153,8 +179,11 @@ function ingestSample(sample, sourceLabel) {
     );
   }
   if (sample.servo) {
-    latestSnapshot.servoA = sample.servo.aDeg;
-    latestSnapshot.servoB = sample.servo.bDeg;
+    latestSnapshot.servosDeg = normalizeServoAngles(sample.servo);
+    latestSnapshot.servoA = latestSnapshot.servosDeg[0];
+    latestSnapshot.servoB = latestSnapshot.servosDeg[1];
+    latestSnapshot.servoC = latestSnapshot.servosDeg[2];
+    latestSnapshot.servoD = latestSnapshot.servosDeg[3];
   }
   if (sample.mode) {
     latestSnapshot.mode = sample.mode;

@@ -287,7 +287,7 @@ h1 {
   grid-column: 1 / -1;
   min-width: 0;
   display: grid;
-  grid-template-columns: 310px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: 380px minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
 }
 
@@ -357,12 +357,12 @@ h2 {
 
 .servo-bars {
   display: grid;
-  gap: 18px;
+  gap: 10px;
 }
 
 .servo-bars div {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr) 76px;
+  grid-template-columns: 54px minmax(0, 1fr) 82px;
   align-items: center;
   gap: 10px;
 }
