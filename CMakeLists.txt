@@ -38,6 +38,7 @@ add_executable(${CMAKE_PROJECT_NAME})
 add_subdirectory(cmake/stm32cubemx)
 
 set(MPU6050_DRV_DIR ${CMAKE_SOURCE_DIR}/Drivers/mpu6050)
+set(BMP180_DRV_DIR ${CMAKE_SOURCE_DIR}/Drivers/bmp180)
 set(APP_DIR ${CMAKE_SOURCE_DIR}/App)
 set(PLATFORM_DIR ${CMAKE_SOURCE_DIR}/Platform)
 
@@ -50,6 +51,8 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${MPU6050_DRV_DIR}/mpu6050_driver.c
     ${MPU6050_DRV_DIR}/mpu6050_stm32_hal_port.c
+    ${BMP180_DRV_DIR}/bmp180_driver.c
+    ${BMP180_DRV_DIR}/bmp180_stm32_hal_port.c
     ${APP_DIR}/SensorAcq/global_data_space.c
     ${APP_DIR}/SensorAcq/sensor_manager.c
     ${APP_DIR}/Telemetry/telemetry_task.c
@@ -59,6 +62,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${MPU6050_DRV_DIR}
+    ${BMP180_DRV_DIR}
     ${APP_DIR}/SensorAcq
     ${APP_DIR}/Telemetry
     ${PLATFORM_DIR}/STM32
@@ -70,6 +74,7 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
+    m
 
     # Add user defined libraries
 )
