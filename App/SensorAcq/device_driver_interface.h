@@ -34,6 +34,33 @@ typedef struct
     void *vpContext;
 } ts_ImuDevice;
 
+typedef enum
+{
+    BARO_DRIVER_OK = 0,
+    BARO_DRIVER_ERR_ARG,
+    BARO_DRIVER_ERR_STATE,
+    BARO_DRIVER_ERR_IO
+} te_BaroDriverRetCode;
+
+typedef te_BaroDriverRetCode (*tpfn_BaroDriverInit)(void *vpContext);
+typedef te_BaroDriverRetCode (*tpfn_BaroDriverStartMeasurement)(void *vpContext);
+typedef te_BaroDriverRetCode (*tpfn_BaroDriverProcess)(void *vpContext);
+typedef te_BaroDriverRetCode (*tpfn_BaroDriverRead)(void *vpContext, ts_TopicBarometer *psBarometer);
+
+typedef struct
+{
+    tpfn_BaroDriverInit pfnInit;
+    tpfn_BaroDriverStartMeasurement pfnStartMeasurement;
+    tpfn_BaroDriverProcess pfnProcess;
+    tpfn_BaroDriverRead pfnReadBarometer;
+} ts_BaroDriverVTable;
+
+typedef struct
+{
+    const ts_BaroDriverVTable *psVTable;
+    void *vpContext;
+} ts_BaroDevice;
+
 #ifdef __cplusplus
 }
 #endif

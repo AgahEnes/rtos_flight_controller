@@ -39,6 +39,7 @@ add_subdirectory(cmake/stm32cubemx)
 
 set(MPU6050_DRV_DIR ${CMAKE_SOURCE_DIR}/Drivers/mpu6050)
 set(SERVO_DRV_DIR ${CMAKE_SOURCE_DIR}/Drivers/servo)
+set(BMP180_DRV_DIR ${CMAKE_SOURCE_DIR}/Drivers/bmp180)
 set(APP_DIR ${CMAKE_SOURCE_DIR}/App)
 set(PLATFORM_DIR ${CMAKE_SOURCE_DIR}/Platform)
 
@@ -53,6 +54,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${MPU6050_DRV_DIR}/mpu6050_stm32_hal_port.c
     ${SERVO_DRV_DIR}/servo_driver.c
     ${SERVO_DRV_DIR}/servo_stm32_hal_port.c
+    ${BMP180_DRV_DIR}/bmp180_driver.c
+    ${BMP180_DRV_DIR}/bmp180_stm32_hal_port.c
     ${APP_DIR}/SensorAcq/global_data_space.c
     ${APP_DIR}/SensorAcq/sensor_manager.c
     ${APP_DIR}/Actuator/actuator_manager.c
@@ -60,6 +63,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${APP_DIR}/FlightManagementControl/flight_control.c
     ${APP_DIR}/Telemetry/telemetry_task.c
     ${PLATFORM_DIR}/STM32/mpu6050_ddi_adapter.c
+    ${PLATFORM_DIR}/STM32/bmp180_ddi_adapter.c
     ${PLATFORM_DIR}/STM32/servo_ddi_adapter.c
     ${PLATFORM_DIR}/STM32/app_platform_port.c
 )
@@ -68,6 +72,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     ${CMAKE_SOURCE_DIR}/Drivers
     ${MPU6050_DRV_DIR}
     ${SERVO_DRV_DIR}
+    ${BMP180_DRV_DIR}
     ${APP_DIR}/SensorAcq
     ${APP_DIR}/Actuator
     ${APP_DIR}/Navigation
@@ -82,6 +87,7 @@ list(REMOVE_ITEM CMAKE_C_IMPLICIT_LINK_LIBRARIES ob)
 # Add linked libraries
 target_link_libraries(${CMAKE_PROJECT_NAME}
     stm32cubemx
+    m
 
     # Add user defined libraries
 )

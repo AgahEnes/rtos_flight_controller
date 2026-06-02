@@ -58,6 +58,16 @@ target_include_directories(servo_driver_test_objs PUBLIC
   .
 )
 
+add_executable(bmp_driver_smoke
+  bmp180_driver_smoke.c
+  ../../Drivers/bmp180/bmp180_driver.c
+)
+target_include_directories(bmp_driver_smoke PRIVATE
+  ../../Drivers
+  ../../Drivers/bmp180
+)
+target_link_libraries(bmp_driver_smoke PRIVATE m)
+
 add_executable(app_unit_tests
   sensor_acq_test.cpp
 )
@@ -94,3 +104,4 @@ add_test(NAME actuator_unit_tests COMMAND actuator_unit_tests)
 add_test(NAME flight_control_unit_tests COMMAND flight_control_unit_tests)
 add_test(NAME mpu_driver_tests COMMAND mpu_driver_tests)
 add_test(NAME servo_driver_tests COMMAND servo_driver_tests)
+add_test(NAME bmp_driver_smoke COMMAND bmp_driver_smoke)

@@ -10,10 +10,14 @@
 #include "mpu6050_hal.h"
 #include "mpu6050_driver.h"
 #include "mpu6050_stm32_hal_port.h"
+#include "bmp180_hal.h"
+#include "bmp180_driver.h"
+#include "bmp180_stm32_hal_port.h"
 #include "servo_driver.h"
 #include "servo_stm32_hal_port.h"
 #include "global_data_space.h"
 #include "mpu6050_ddi_adapter.h"
+#include "bmp180_ddi_adapter.h"
 #include "servo_ddi_adapter.h"
 #include "sensor_manager.h"
 #include "actuator_manager.h"
@@ -39,6 +43,9 @@
 #define APP_PLATFORM_BUS_TIMEOUT_MS                     (100U)
 #define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS                (20U)
 #define APP_PLATFORM_IMU_DEVICE_COUNT                   (1U)
+#define APP_PLATFORM_ENABLE_BMP180                      (1)
+#define APP_PLATFORM_BARO_DEVICE_COUNT                  (1U)
+#define APP_PLATFORM_BARO_READ_PERIOD_TICKS             (10U)
 #define APP_PLATFORM_SERVO_DEVICE_COUNT                 (4U)
 #define APP_PLATFORM_UART_DMA_TOKEN_MAX_COUNT           (1U)
 #define APP_PLATFORM_UART_DMA_TOKEN_INITIAL_COUNT       (1U)
@@ -58,6 +65,10 @@ static ts_Mpu6050_Handle gsMpuHandle;
 static ts_Mpu6050_Stm32BusContext gsMpuBusContext;
 static ts_Mpu6050DdiAdapterContext gsMpuDdiContext;
 static ts_ImuDevice gasImuDevices[APP_PLATFORM_IMU_DEVICE_COUNT];
+static ts_Bmp180_Handle gsBmp180Handle;
+static ts_Bmp180_Stm32BusContext gsBmp180BusContext;
+static ts_Bmp180DdiAdapterContext gsBmp180DdiContext;
+static ts_BaroDevice gasBaroDevices[APP_PLATFORM_BARO_DEVICE_COUNT];
 static ts_SensorManagerContext gsSensorManagerContext;
 static ts_Servo_Handle gasServoHandles[APP_PLATFORM_SERVO_DEVICE_COUNT];
 static ts_Servo_Stm32PortContext gasServoPortContexts[APP_PLATFORM_SERVO_DEVICE_COUNT];
@@ -224,6 +235,63 @@ static bool AppPlatformPort_prvInitMpu6050(void)
 }
 
 /**
+ * @brief Initializes BMP180 open configuration and loads calibration coefficients.
+ * @return true on success, false on failure.
+ */
+static bool AppPlatformPort_prvInitBmp180(void)
+{
+    ts_Bmp180_OpenConfig sOpenConfig;
+    ts_Bmp180_BusInterface sBusIf;
+    ts_Bmp180_LockInterface sLockIf;
+    ts_Bmp180_TimingInterface sTimingIf;
+    te_Driver_RetCode eRet;
+
+    (void)memset(&gsBmp180Handle, 0, sizeof(gsBmp180Handle));
+    (void)memset(&gsBmp180BusContext, 0, sizeof(gsBmp180BusContext));
+    (void)memset(&gsBmp180DdiContext, 0, sizeof(gsBmp180DdiContext));
+    (void)memset(&gasBaroDevices, 0, sizeof(gasBaroDevices));
+    (void)memset(&sOpenConfig, 0, sizeof(sOpenConfig));
+
+    gsBmp180BusContext.pxI2cHandle = gpxPlatformI2cHandle;
+    gsBmp180BusContext.xBusMutex = gxAppPlatformI2cBusMutex;
+
+    eRet = Bmp180_Stm32Hal_FillBusInterface(&sBusIf, &gsBmp180BusContext);
+    if (eRet != DRIVER_OK)
+    {
+        return false;
+    }
+
+    eRet = Bmp180_Stm32Hal_FillLockInterface(&sLockIf, &gsBmp180BusContext);
+    if (eRet != DRIVER_OK)
+    {
+        return false;
+    }
+
+    eRet = Bmp180_Stm32Hal_FillTimingInterface(&sTimingIf);
+    if (eRet != DRIVER_OK)
+    {
+        return false;
+    }
+
+    sOpenConfig.u8I2cAddress = BMP180_I2C_ADDR_DEFAULT;
+    sOpenConfig.u32BusTimeoutMs = APP_PLATFORM_BUS_TIMEOUT_MS;
+    sOpenConfig.u32BusLockTimeoutMs = APP_PLATFORM_BUS_LOCK_TIMEOUT_MS;
+    sOpenConfig.eOversampling = BMP180_OSS3_ULTRA_HIGH_RESOLUTION;
+    sOpenConfig.sBusInterface = sBusIf;
+    sOpenConfig.sLockInterface = sLockIf;
+    sOpenConfig.sTimingInterface = sTimingIf;
+    sOpenConfig.f32SeaLevelPressurePa = BMP180_SEA_LEVEL_PRESSURE_PA;
+
+    eRet = Bmp180_Open(&gsBmp180Handle, &sOpenConfig);
+    if (eRet != DRIVER_OK)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+/**
  * @brief Initializes and opens four servo instances on one PWM timer.
  * @return true on success, false on failure.
  */
@@ -309,11 +377,20 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     Gds_ResetVehicleState();
     Gds_ResetImuCalibration();
     Gds_ResetNavCommand();
+    Gds_ResetBarometer();
     Gds_ResetActuatorCmd();
     Mpu6050DdiAdapter_Bind(&gasImuDevices[0], &gsMpuDdiContext, &gsMpuHandle);
+#if (APP_PLATFORM_ENABLE_BMP180 != 0)
+    Bmp180DdiAdapter_Bind(&gasBaroDevices[0], &gsBmp180DdiContext, &gsBmp180Handle);
+#endif
 
     sSensorManagerConfig.psImuDevices = gasImuDevices;
     sSensorManagerConfig.u8ImuDeviceCount = 1U;
+#if (APP_PLATFORM_ENABLE_BMP180 != 0)
+    sSensorManagerConfig.psBaroDevices = gasBaroDevices;
+    sSensorManagerConfig.u8BaroDeviceCount = APP_PLATFORM_BARO_DEVICE_COUNT;
+    sSensorManagerConfig.u8BaroReadPeriodTicks = APP_PLATFORM_BARO_READ_PERIOD_TICKS;
+#endif
     if (SensorManager_Init(&gsSensorManagerContext, &sSensorManagerConfig) != SENSOR_MANAGER_OK)
     {
         return false;
@@ -537,6 +614,13 @@ bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle,
     {
         return false;
     }
+
+#if (APP_PLATFORM_ENABLE_BMP180 != 0)
+    if (AppPlatformPort_prvInitBmp180() == false)
+    {
+        return false;
+    }
+#endif
 
     if (AppPlatformPort_prvInitServos() == false)
     {

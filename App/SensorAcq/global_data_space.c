@@ -33,6 +33,13 @@ typedef struct
 
 typedef struct
 {
+    ts_TopicBarometer asBarometerBuffers[2];
+    atomic_uint_fast8_t u8ActiveBufferIdx;
+    atomic_uint_fast32_t u32SeqLock;
+} ts_GdsBarometerStorage;
+
+typedef struct
+{
     ts_TopicActuatorCmd asActuatorCmdBuffers[2];
     atomic_uint_fast8_t u8ActiveBufferIdx;
     atomic_uint_fast32_t u32SeqLock;
@@ -42,6 +49,7 @@ static ts_GdsRawImuStorage gsRawImuStorage;
 static ts_GdsVehicleStateStorage gsVehicleStateStorage;
 static ts_GdsImuCalibrationStorage gsImuCalibrationStorage;
 static ts_GdsNavCommandStorage gsNavCommandStorage;
+static ts_GdsBarometerStorage gsBarometerStorage;
 static ts_GdsActuatorCmdStorage gsActuatorCmdStorage;
 
 void Gds_ResetRawImu(void)
@@ -103,6 +111,18 @@ void Gds_ResetActuatorCmd(void)
     gsActuatorCmdStorage.asActuatorCmdBuffers[1] = sZeroTopic;
     (void)atomic_store_explicit(&gsActuatorCmdStorage.u8ActiveBufferIdx, 0U, memory_order_relaxed);
     (void)atomic_store_explicit(&gsActuatorCmdStorage.u32SeqLock, 0U, memory_order_relaxed);
+}
+
+void Gds_ResetBarometer(void)
+{
+    ts_TopicBarometer sZeroTopic;
+
+    (void)memset(&sZeroTopic, 0, sizeof(sZeroTopic));
+    (void)memset(&gsBarometerStorage, 0, sizeof(gsBarometerStorage));
+    gsBarometerStorage.asBarometerBuffers[0] = sZeroTopic;
+    gsBarometerStorage.asBarometerBuffers[1] = sZeroTopic;
+    (void)atomic_store_explicit(&gsBarometerStorage.u8ActiveBufferIdx, 0U, memory_order_relaxed);
+    (void)atomic_store_explicit(&gsBarometerStorage.u32SeqLock, 0U, memory_order_relaxed);
 }
 
 te_GdsRetCode Gds_PublishRawImu(const ts_TopicRawImu *psRawImu)
@@ -304,6 +324,58 @@ te_GdsRetCode Gds_ReadNavCommand(ts_TopicNavCommand *psCommand)
         *psCommand = gsNavCommandStorage.asNavCommandBuffers[u8ActiveIdx];
 
         u32SeqEnd = (uint32_t)atomic_load_explicit(&gsNavCommandStorage.u32SeqLock, memory_order_acquire);
+        if ((u32SeqStart == u32SeqEnd) && ((u32SeqEnd & 1U) == 0U))
+        {
+            return GDS_OK;
+        }
+    }
+
+    return GDS_ERR_INCONSISTENT_READ;
+}
+
+te_GdsRetCode Gds_PublishBarometer(const ts_TopicBarometer *psBarometer)
+{
+    uint8_t u8ActiveIdx;
+    uint8_t u8WriteIdx;
+
+    if (psBarometer == NULL)
+    {
+        return GDS_ERR_ARG;
+    }
+
+    (void)atomic_fetch_add_explicit(&gsBarometerStorage.u32SeqLock, 1U, memory_order_acq_rel);
+
+    u8ActiveIdx = (uint8_t)atomic_load_explicit(&gsBarometerStorage.u8ActiveBufferIdx, memory_order_acquire);
+    u8WriteIdx = (uint8_t)((uint8_t)1U - u8ActiveIdx);
+
+    gsBarometerStorage.asBarometerBuffers[u8WriteIdx] = *psBarometer;
+
+    (void)atomic_store_explicit(&gsBarometerStorage.u8ActiveBufferIdx, u8WriteIdx, memory_order_release);
+    (void)atomic_fetch_add_explicit(&gsBarometerStorage.u32SeqLock, 1U, memory_order_acq_rel);
+
+    return GDS_OK;
+}
+
+te_GdsRetCode Gds_ReadBarometer(ts_TopicBarometer *psBarometer)
+{
+    uint32_t u32SeqStart;
+    uint32_t u32SeqEnd;
+    uint8_t u8ActiveIdx;
+    uint32_t u32RetryCount;
+
+    if (psBarometer == NULL)
+    {
+        return GDS_ERR_ARG;
+    }
+
+    for (u32RetryCount = 0U; u32RetryCount < 3U; u32RetryCount++)
+    {
+        u32SeqStart = (uint32_t)atomic_load_explicit(&gsBarometerStorage.u32SeqLock, memory_order_acquire);
+
+        u8ActiveIdx = (uint8_t)atomic_load_explicit(&gsBarometerStorage.u8ActiveBufferIdx, memory_order_acquire);
+        *psBarometer = gsBarometerStorage.asBarometerBuffers[u8ActiveIdx];
+
+        u32SeqEnd = (uint32_t)atomic_load_explicit(&gsBarometerStorage.u32SeqLock, memory_order_acquire);
         if ((u32SeqStart == u32SeqEnd) && ((u32SeqEnd & 1U) == 0U))
         {
             return GDS_OK;
