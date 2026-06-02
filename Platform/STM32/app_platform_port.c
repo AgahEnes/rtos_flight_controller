@@ -10,9 +10,13 @@
 #include "mpu6050_hal.h"
 #include "mpu6050_driver.h"
 #include "mpu6050_stm32_hal_port.h"
+#include "servo_driver.h"
+#include "servo_stm32_hal_port.h"
 #include "global_data_space.h"
 #include "mpu6050_ddi_adapter.h"
+#include "servo_ddi_adapter.h"
 #include "sensor_manager.h"
+#include "actuator_manager.h"
 #include "telemetry_task.h"
 #include "navigation_subsystem.h"
 #include "flight_control.h"
@@ -21,26 +25,32 @@
 #define APP_PLATFORM_TELEMETRY_TASK_STACK_WORDS         (512U)
 #define APP_PLATFORM_NAV_TASK_STACK_WORDS               (512U)
 #define APP_PLATFORM_FLIGHT_CONTROL_TASK_STACK_WORDS    (768U)
+#define APP_PLATFORM_ACTUATOR_TASK_STACK_WORDS          (512U)
 #define APP_PLATFORM_SENSOR_TASK_PERIOD_MS              (10U)
 #define APP_PLATFORM_TELEMETRY_TASK_PERIOD_MS           (50U)
 #define APP_PLATFORM_NAV_TASK_PERIOD_MS                 (10U)
 #define APP_PLATFORM_FLIGHT_CONTROL_TASK_PERIOD_MS      (10U)
+#define APP_PLATFORM_ACTUATOR_TASK_PERIOD_MS            (10U)
 #define APP_PLATFORM_SENSOR_TASK_PRIORITY               (osPriorityAboveNormal)
 #define APP_PLATFORM_TELEMETRY_TASK_PRIORITY            (osPriorityNormal)
 #define APP_PLATFORM_NAV_TASK_PRIORITY                  (osPriorityAboveNormal)
 #define APP_PLATFORM_FLIGHT_CONTROL_TASK_PRIORITY       (osPriorityAboveNormal)
+#define APP_PLATFORM_ACTUATOR_TASK_PRIORITY             (osPriorityAboveNormal)
 #define APP_PLATFORM_BUS_TIMEOUT_MS                     (100U)
 #define APP_PLATFORM_BUS_LOCK_TIMEOUT_MS                (20U)
 #define APP_PLATFORM_IMU_DEVICE_COUNT                   (1U)
+#define APP_PLATFORM_SERVO_DEVICE_COUNT                 (4U)
 #define APP_PLATFORM_UART_DMA_TOKEN_MAX_COUNT           (1U)
 #define APP_PLATFORM_UART_DMA_TOKEN_INITIAL_COUNT       (1U)
 
 static I2C_HandleTypeDef *gpxPlatformI2cHandle = NULL;
 static UART_HandleTypeDef *gpxPlatformUartHandle = NULL;
+static TIM_HandleTypeDef *gpxPlatformServoTimHandle = NULL;
 static osThreadId_t gxAppPlatformSensorTaskHandle = NULL;
 static osThreadId_t gxAppPlatformTelemetryTaskHandle = NULL;
 static osThreadId_t gxAppPlatformNavTaskHandle = NULL;
 static osThreadId_t gxAppPlatformFlightControlTaskHandle = NULL;
+static osThreadId_t gxAppPlatformActuatorTaskHandle = NULL;
 static osMutexId_t gxAppPlatformI2cBusMutex = NULL;
 static osSemaphoreId_t gxAppPlatformUartTxDmaToken = NULL;
 
@@ -49,6 +59,11 @@ static ts_Mpu6050_Stm32BusContext gsMpuBusContext;
 static ts_Mpu6050DdiAdapterContext gsMpuDdiContext;
 static ts_ImuDevice gasImuDevices[APP_PLATFORM_IMU_DEVICE_COUNT];
 static ts_SensorManagerContext gsSensorManagerContext;
+static ts_Servo_Handle gasServoHandles[APP_PLATFORM_SERVO_DEVICE_COUNT];
+static ts_Servo_Stm32PortContext gasServoPortContexts[APP_PLATFORM_SERVO_DEVICE_COUNT];
+static ts_ServoDdiAdapterContext gasServoDdiContexts[APP_PLATFORM_SERVO_DEVICE_COUNT];
+static ts_ActuatorDevice gasActuatorDevices[APP_PLATFORM_SERVO_DEVICE_COUNT];
+static ts_ActuatorManagerContext gsActuatorManagerContext;
 static ts_TelemetryTaskContext gsTelemetryTaskContext;
 static ts_NavContext gsNavContext;
 static ts_FlightControlContext gsFlightControlContext;
@@ -63,6 +78,8 @@ static StaticTask_t gsAppPlatformNavTaskCb;
 static StackType_t gau32AppPlatformNavTaskStack[APP_PLATFORM_NAV_TASK_STACK_WORDS];
 static StaticTask_t gsAppPlatformFlightControlTaskCb;
 static StackType_t gau32AppPlatformFlightControlTaskStack[APP_PLATFORM_FLIGHT_CONTROL_TASK_STACK_WORDS];
+static StaticTask_t gsAppPlatformActuatorTaskCb;
+static StackType_t gau32AppPlatformActuatorTaskStack[APP_PLATFORM_ACTUATOR_TASK_STACK_WORDS];
 static StaticSemaphore_t gsAppPlatformI2cBusMutexCb;
 static StaticSemaphore_t gsAppPlatformUartTxDmaTokenCb;
 
@@ -142,7 +159,12 @@ static bool AppPlatformPort_prvInitMpu6050(void)
     (void)memset(&gsMpuBusContext, 0, sizeof(gsMpuBusContext));
     (void)memset(&gsMpuDdiContext, 0, sizeof(gsMpuDdiContext));
     (void)memset(&gasImuDevices, 0, sizeof(gasImuDevices));
+    (void)memset(&gasServoHandles, 0, sizeof(gasServoHandles));
+    (void)memset(&gasServoPortContexts, 0, sizeof(gasServoPortContexts));
+    (void)memset(&gasServoDdiContexts, 0, sizeof(gasServoDdiContexts));
+    (void)memset(&gasActuatorDevices, 0, sizeof(gasActuatorDevices));
     (void)memset(&gsSensorManagerContext, 0, sizeof(gsSensorManagerContext));
+    (void)memset(&gsActuatorManagerContext, 0, sizeof(gsActuatorManagerContext));
     (void)memset(&gsTelemetryTaskContext, 0, sizeof(gsTelemetryTaskContext));
     (void)memset(&gsFlightControlContext, 0, sizeof(gsFlightControlContext));
     (void)memset(&sOpenConfig, 0, sizeof(sOpenConfig));
@@ -202,12 +224,77 @@ static bool AppPlatformPort_prvInitMpu6050(void)
 }
 
 /**
+ * @brief Initializes and opens four servo instances on one PWM timer.
+ * @return true on success, false on failure.
+ */
+static bool AppPlatformPort_prvInitServos(void)
+{
+    static const uint32_t kau32ServoChannels[APP_PLATFORM_SERVO_DEVICE_COUNT] =
+    {
+        TIM_CHANNEL_1,
+        TIM_CHANNEL_2,
+        TIM_CHANNEL_3,
+        TIM_CHANNEL_4
+    };
+    uint8_t u8Idx;
+    ts_Servo_OpenConfig sOpenConfig;
+    te_Driver_RetCode eRet;
+    HAL_StatusTypeDef eHalRet;
+
+    if ((gpxPlatformServoTimHandle == NULL) || (gpxPlatformServoTimHandle->Instance == NULL))
+    {
+        return false;
+    }
+
+    for (u8Idx = 0U; u8Idx < APP_PLATFORM_SERVO_DEVICE_COUNT; u8Idx++)
+    {
+        (void)memset(&sOpenConfig, 0, sizeof(sOpenConfig));
+
+        gasServoPortContexts[u8Idx].pxTimHandle = gpxPlatformServoTimHandle;
+        gasServoPortContexts[u8Idx].u32Channel = kau32ServoChannels[u8Idx];
+        gasServoPortContexts[u8Idx].xServoMutex = NULL;
+        gasServoPortContexts[u8Idx].u32TimerClockHz = 0U;
+
+        eHalRet = HAL_TIM_PWM_Start(gpxPlatformServoTimHandle, kau32ServoChannels[u8Idx]);
+        if (eHalRet != HAL_OK)
+        {
+            return false;
+        }
+
+        eRet = Servo_Stm32Hal_FillInterfaces(&sOpenConfig, &gasServoPortContexts[u8Idx]);
+        if (eRet != DRIVER_OK)
+        {
+            return false;
+        }
+
+        sOpenConfig.f32MinAngleRad = SERVO_SG90_MIN_ANGLE_RAD;
+        sOpenConfig.f32MaxAngleRad = SERVO_SG90_MAX_ANGLE_RAD;
+        sOpenConfig.u32MinPulseUs = SERVO_SG90_MIN_PULSE_US;
+        sOpenConfig.u32MaxPulseUs = SERVO_SG90_MAX_PULSE_US;
+        sOpenConfig.f32AngleOffsetRad = 0.0F;
+        sOpenConfig.u32LockTimeoutMs = SERVO_DEFAULT_LOCK_TIMEOUT_MS;
+        sOpenConfig.bEnableSlewRate = false;
+        sOpenConfig.f32MaxSlewRateRadPerSec = 0.0F;
+
+        eRet = Servo_Open(&gasServoHandles[u8Idx], &sOpenConfig);
+        if (eRet != DRIVER_OK)
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
  * @brief Initializes app-layer objects: DDI binding, manager, and telemetry task.
  * @return true on success, false on failure.
  */
 static bool AppPlatformPort_prvInitAppLayers(void)
 {
+    uint8_t u8Idx;
     ts_SensorManagerConfig sSensorManagerConfig;
+    ts_ActuatorManagerConfig sActuatorManagerConfig;
     ts_TelemetryTaskConfig sTelemetryConfig;
     ts_NavConfig sNavConfig;
     ts_FlightControlConfig sFlightControlConfig;
@@ -216,6 +303,7 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     (void)memset(&sNavConfig, 0, sizeof(sNavConfig));
     (void)memset(&sTelemetryConfig, 0, sizeof(sTelemetryConfig));
     (void)memset(&sSensorManagerConfig, 0, sizeof(sSensorManagerConfig));
+    (void)memset(&sActuatorManagerConfig, 0, sizeof(sActuatorManagerConfig));
     
     Gds_ResetRawImu();
     Gds_ResetVehicleState();
@@ -227,6 +315,20 @@ static bool AppPlatformPort_prvInitAppLayers(void)
     sSensorManagerConfig.psImuDevices = gasImuDevices;
     sSensorManagerConfig.u8ImuDeviceCount = 1U;
     if (SensorManager_Init(&gsSensorManagerContext, &sSensorManagerConfig) != SENSOR_MANAGER_OK)
+    {
+        return false;
+    }
+
+    for (u8Idx = 0U; u8Idx < APP_PLATFORM_SERVO_DEVICE_COUNT; u8Idx++)
+    {
+        ServoDdiAdapter_Bind(&gasActuatorDevices[u8Idx],
+                             &gasServoDdiContexts[u8Idx],
+                             &gasServoHandles[u8Idx]);
+    }
+
+    sActuatorManagerConfig.psActuatorDevices = gasActuatorDevices;
+    sActuatorManagerConfig.u8ActuatorDeviceCount = APP_PLATFORM_SERVO_DEVICE_COUNT;
+    if (ActuatorManager_Init(&gsActuatorManagerContext, &sActuatorManagerConfig) != ACTUATOR_MANAGER_OK)
     {
         return false;
     }
@@ -362,7 +464,32 @@ static void AppPlatformPort_prvFlightControlTask(void *pvArgument)
     }
 }
 
-bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle)
+/**
+ * @brief Actuator periodic thread entry.
+ * @param pvArgument Unused thread argument.
+ * @retval None.
+ */
+static void AppPlatformPort_prvActuatorTask(void *pvArgument)
+{
+    uint32_t u32NextWakeTick;
+    te_ActuatorManagerRetCode eStepRet;
+
+    (void)pvArgument;
+
+    u32NextWakeTick = osKernelGetTickCount();
+    for (;;)
+    {
+        eStepRet = ActuatorManager_Step(&gsActuatorManagerContext);
+        (void)eStepRet;
+
+        u32NextWakeTick += APP_PLATFORM_ACTUATOR_TASK_PERIOD_MS;
+        (void)osDelayUntil(u32NextWakeTick);
+    }
+}
+
+bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle,
+                          UART_HandleTypeDef *pxUartHandle,
+                          TIM_HandleTypeDef *pxServoTimHandle)
 {
     const osMutexAttr_t xI2cMutexAttr =
     {
@@ -377,13 +504,14 @@ bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *px
         .cb_size = sizeof(gsAppPlatformUartTxDmaTokenCb)
     };
 
-    if ((pxI2cHandle == NULL) || (pxUartHandle == NULL))
+    if ((pxI2cHandle == NULL) || (pxUartHandle == NULL) || (pxServoTimHandle == NULL))
     {
         return false;
     }
 
     gpxPlatformI2cHandle = pxI2cHandle;
     gpxPlatformUartHandle = pxUartHandle;
+    gpxPlatformServoTimHandle = pxServoTimHandle;
 
     if (gxAppPlatformI2cBusMutex == NULL)
     {
@@ -406,6 +534,11 @@ bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *px
     }
 
     if (AppPlatformPort_prvInitMpu6050() == false)
+    {
+        return false;
+    }
+
+    if (AppPlatformPort_prvInitServos() == false)
     {
         return false;
     }
@@ -455,6 +588,15 @@ osThreadId_t AppPlatformPort_CreateTask(void)
         .cb_mem = &gsAppPlatformFlightControlTaskCb,
         .cb_size = sizeof(gsAppPlatformFlightControlTaskCb)
     };
+    const osThreadAttr_t xActuatorTaskAttr =
+    {
+        .name = "app_platform_actuator",
+        .priority = APP_PLATFORM_ACTUATOR_TASK_PRIORITY,
+        .stack_mem = gau32AppPlatformActuatorTaskStack,
+        .stack_size = sizeof(gau32AppPlatformActuatorTaskStack),
+        .cb_mem = &gsAppPlatformActuatorTaskCb,
+        .cb_size = sizeof(gsAppPlatformActuatorTaskCb)
+    };
 
     if (gxAppPlatformSensorTaskHandle != NULL)
     {
@@ -481,6 +623,12 @@ osThreadId_t AppPlatformPort_CreateTask(void)
 
     gxAppPlatformFlightControlTaskHandle = osThreadNew(AppPlatformPort_prvFlightControlTask, NULL, &xFlightControlTaskAttr);
     if (gxAppPlatformFlightControlTaskHandle == NULL)
+    {
+        return NULL;
+    }
+
+    gxAppPlatformActuatorTaskHandle = osThreadNew(AppPlatformPort_prvActuatorTask, NULL, &xActuatorTaskAttr);
+    if (gxAppPlatformActuatorTaskHandle == NULL)
     {
         return NULL;
     }

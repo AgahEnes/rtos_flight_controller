@@ -15,9 +15,12 @@ extern "C" {
  * @brief Initializes application platform layer.
  * @param pxI2cHandle I2C handle used by MPU6050 driver.
  * @param pxUartHandle UART handle used for telemetry transmission.
+ * @param pxServoTimHandle Timer handle used for 4-channel servo PWM output.
  * @return true on success, false on initialization failure.
  */
-bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle, UART_HandleTypeDef *pxUartHandle);
+bool AppPlatformPort_Init(I2C_HandleTypeDef *pxI2cHandle,
+                          UART_HandleTypeDef *pxUartHandle,
+                          TIM_HandleTypeDef *pxServoTimHandle);
 
 /**
  * @brief Creates statically allocated sensor and telemetry threads.
