@@ -91,6 +91,21 @@ static float FlightControl_prvClampF32(float f32Value, float f32Min, float f32Ma
     return f32Value;
 }
 
+static float FlightControl_prvWrapAngleMinusPiToPi(float f32AngleRad)
+{
+    while (f32AngleRad > FLIGHT_CONTROL_PI_F)
+    {
+        f32AngleRad -= (2.0F * FLIGHT_CONTROL_PI_F);
+    }
+
+    while (f32AngleRad < (-FLIGHT_CONTROL_PI_F))
+    {
+        f32AngleRad += (2.0F * FLIGHT_CONTROL_PI_F);
+    }
+
+    return f32AngleRad;
+}
+
 static void FlightControl_prvInitPidController(ts_FmcPidController *psPid,
                                                float f32Kp,
                                                float f32Ki,
@@ -158,7 +173,8 @@ static void FlightControl_prvEnterStabilize(ts_FlightControlContext *psContext)
 static float FlightControl_prvComputePidDemand(ts_FmcPidController *psPid,
                                                float f32TargetAngleRad,
                                                float f32CurrentAngleRad,
-                                               float f32AngularRateRadS)
+                                               float f32AngularRateRadS,
+                                               bool bWrapErrorMinusPiToPi)
 {
     float f32Error;
     float f32Proportional;
@@ -173,6 +189,11 @@ static float FlightControl_prvComputePidDemand(ts_FmcPidController *psPid,
     }
 
     f32Error = f32TargetAngleRad - f32CurrentAngleRad;
+    if (bWrapErrorMinusPiToPi == true)
+    {
+        f32Error = FlightControl_prvWrapAngleMinusPiToPi(f32Error);
+    }
+
     f32Proportional = psPid->f32Kp * f32Error;
     f32IntegralMin = -psPid->f32IntegralClamp;
     f32IntegralMax = psPid->f32IntegralClamp;
@@ -830,15 +851,18 @@ static te_FlightControlRetCode FlightControl_prvStepStabilize(ts_FlightControlCo
     f32RollDemand = FlightControl_prvComputePidDemand(&psContext->sRollPid,
                                                       FMC_TARGET_ROLL_RAD,
                                                       sVehicleState.f32RollRad,
-                                                      sVehicleState.f32RollRateRadS);
+                                                      sVehicleState.f32RollRateRadS,
+                                                      false);
     f32PitchDemand = FlightControl_prvComputePidDemand(&psContext->sPitchPid,
                                                        FMC_TARGET_PITCH_RAD,
                                                        sVehicleState.f32PitchRad,
-                                                       sVehicleState.f32PitchRateRadS);
+                                                       sVehicleState.f32PitchRateRadS,
+                                                       false);
     f32YawDemand = FlightControl_prvComputePidDemand(&psContext->sYawPid,
                                                      FMC_TARGET_YAW_RAD,
                                                      sVehicleState.f32YawRad,
-                                                     sVehicleState.f32YawRateRadS);
+                                                     sVehicleState.f32YawRateRadS,
+                                                     true);
 
     af32FinAngleRad[FMC_FIN_INDEX_POS_Y] = f32PitchDemand + f32RollDemand;
     af32FinAngleRad[FMC_FIN_INDEX_POS_X] = f32YawDemand + f32RollDemand;

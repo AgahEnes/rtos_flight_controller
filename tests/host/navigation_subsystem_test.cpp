@@ -280,13 +280,13 @@ TEST(NavigationSubsystemTest, InitSeedsInitialAttitudeWhenConfigRequestsIt)
     sConfig.sInitialAttitude.u8IsValid = 1U;
 
     ASSERT_EQ(Navigation_Init(&sContext, &sConfig), NAV_RET_OK);
-    EXPECT_NEAR(sContext.sEstimatedState.f32RollRad, kTwoPiRad - 0.10F, 1.0e-6F);
+    EXPECT_NEAR(sContext.sEstimatedState.f32RollRad, -0.10F, 1.0e-6F);
     EXPECT_NEAR(sContext.sEstimatedState.f32PitchRad, 0.20F, 1.0e-6F);
     EXPECT_NEAR(sContext.sEstimatedState.f32YawRad, 0.30F, 1.0e-6F);
     EXPECT_TRUE(sContext.sEstimatedState.bIsEstimated);
     EXPECT_NEAR(QuaternionNorm(sContext.sQuaternion), 1.0F, 1.0e-6F);
     {
-        const Quaternion sExpectedQuat = EulerToQuaternion(kTwoPiRad - 0.10F, 0.20F, 0.30F);
+        const Quaternion sExpectedQuat = EulerToQuaternion(-0.10F, 0.20F, 0.30F);
         EXPECT_GT(QuaternionSimilarityAbsDot(sContext.sQuaternion, sExpectedQuat), 1.0F - 1.0e-5F);
     }
 }
@@ -491,13 +491,13 @@ TEST(NavigationSubsystemTest, ReinitCommandClearsInternalTracking)
     EXPECT_EQ(sContext.u32LastExecutedCmdSeq, 21U);
     EXPECT_EQ(sContext.u8StuckCycleCount, 0U);
     EXPECT_TRUE(sContext.u8HasLastRawImu != 0U);
-    EXPECT_NEAR(sVehicleState.f32RollRad, kTwoPiRad - 0.40F, 1.0e-6F);
+    EXPECT_NEAR(sVehicleState.f32RollRad, -0.40F, 1.0e-6F);
     EXPECT_NEAR(sVehicleState.f32PitchRad, 0.50F, 1.0e-6F);
     EXPECT_NEAR(sVehicleState.f32YawRad, 0.60F, 1.0e-6F);
     EXPECT_TRUE(sVehicleState.bIsEstimated);
     EXPECT_NEAR(QuaternionNorm(sContext.sQuaternion), 1.0F, 1.0e-6F);
     {
-        const Quaternion sExpectedQuat = EulerToQuaternion(kTwoPiRad - 0.40F, 0.50F, 0.60F);
+        const Quaternion sExpectedQuat = EulerToQuaternion(-0.40F, 0.50F, 0.60F);
         EXPECT_GT(QuaternionSimilarityAbsDot(sContext.sQuaternion, sExpectedQuat), 1.0F - 1.0e-5F);
     }
 }

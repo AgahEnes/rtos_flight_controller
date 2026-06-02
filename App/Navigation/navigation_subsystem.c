@@ -37,6 +37,26 @@ static float Navigation_prvWrapAngle0To2Pi(float f32AngleRad)
     return f32AngleRad;
 }
 
+static float Navigation_prvWrapAngleMinusPiToPi(float f32AngleRad)
+{
+    if ((f32AngleRad >= (-NAV_PI_F)) && (f32AngleRad <= NAV_PI_F))
+    {
+        return f32AngleRad;
+    }
+
+    while (f32AngleRad > NAV_PI_F)
+    {
+        f32AngleRad -= NAV_TWO_PI_F;
+    }
+
+    while (f32AngleRad < (-NAV_PI_F))
+    {
+        f32AngleRad += NAV_TWO_PI_F;
+    }
+
+    return f32AngleRad;
+}
+
 static void Navigation_prvSetIdentityQuaternion(ts_NavQuaternion *psQuaternion)
 {
     if (psQuaternion == NULL)
@@ -154,8 +174,8 @@ static void Navigation_prvSyncAttitudeFromQuaternion(ts_NavContext *psContext)
     }
 
     Navigation_prvQuaternionToEuler(&psContext->sQuaternion, &f32RollRad, &f32PitchRad, &f32YawRad);
-    psContext->sEstimatedState.f32RollRad = Navigation_prvWrapAngle0To2Pi(f32RollRad);
-    psContext->sEstimatedState.f32PitchRad = Navigation_prvWrapAngle0To2Pi(f32PitchRad);
+    psContext->sEstimatedState.f32RollRad = Navigation_prvWrapAngleMinusPiToPi(f32RollRad);
+    psContext->sEstimatedState.f32PitchRad = Navigation_prvWrapAngleMinusPiToPi(f32PitchRad);
     psContext->sEstimatedState.f32YawRad = Navigation_prvWrapAngle0To2Pi(f32YawRad);
 }
 
@@ -362,9 +382,9 @@ static void Navigation_prvApplyInitialAttitude(ts_NavContext *psContext)
     if (psContext->sConfig.sInitialAttitude.u8IsValid == 1U)
     {
         psContext->sEstimatedState.f32RollRad =
-            Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32RollRad);
+            Navigation_prvWrapAngleMinusPiToPi(psContext->sConfig.sInitialAttitude.f32RollRad);
         psContext->sEstimatedState.f32PitchRad =
-            Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32PitchRad);
+            Navigation_prvWrapAngleMinusPiToPi(psContext->sConfig.sInitialAttitude.f32PitchRad);
         psContext->sEstimatedState.f32YawRad =
             Navigation_prvWrapAngle0To2Pi(psContext->sConfig.sInitialAttitude.f32YawRad);
         Navigation_prvSyncQuaternionFromEuler(psContext);

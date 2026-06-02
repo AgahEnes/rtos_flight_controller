@@ -35,9 +35,9 @@ typedef enum
 
 typedef struct
 {
-    float f32RollRad;
-    float f32PitchRad;
-    float f32YawRad;
+    float f32RollRad;       /* Range: [-PI, +PI] */
+    float f32PitchRad;      /* Range: [-PI, +PI] */
+    float f32YawRad;        /* Range: [0, 2*PI) */
     uint8_t u8IsValid;
 } ts_NavInitialAttitude;
 
