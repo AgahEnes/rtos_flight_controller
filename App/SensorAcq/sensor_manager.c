@@ -51,12 +51,41 @@ te_SensorManagerRetCode SensorManager_Step(ts_SensorManagerContext *psContext)
 {
     uint8_t u8Idx;
     ts_TopicRawImu sRawImu;
+    ts_TopicImuCalibration sCalibration;
     te_ImuDriverRetCode eReadRet;
+    te_ImuDriverRetCode eSetBiasRet;
     te_GdsRetCode eGdsRet;
 
     if ((psContext == NULL) || (psContext->u8IsInitialized == 0U))
     {
         return SENSOR_MANAGER_ERR_STATE;
+    }
+
+    (void)memset(&sCalibration, 0, sizeof(sCalibration));
+    eGdsRet = Gds_ReadImuCalibration(&sCalibration);
+    if (eGdsRet != GDS_OK)
+    {
+        return SENSOR_MANAGER_ERR_GDS;
+    }
+    if ((sCalibration.bIsValid == true) && (sCalibration.u32UpdateCounter != psContext->u32LastAppliedCalibrationCounter))
+    {
+        for (u8Idx = 0U; u8Idx < psContext->sConfig.u8ImuDeviceCount; u8Idx++)
+        {
+            if ((psContext->sConfig.psImuDevices[u8Idx].psVTable == NULL) ||
+                (psContext->sConfig.psImuDevices[u8Idx].psVTable->pfnSetBias == NULL))
+            {
+                return SENSOR_MANAGER_ERR_DRIVER;
+            }
+
+            eSetBiasRet = psContext->sConfig.psImuDevices[u8Idx].psVTable->pfnSetBias(
+                psContext->sConfig.psImuDevices[u8Idx].vpContext,
+                &sCalibration);
+            if (eSetBiasRet != IMU_DRIVER_OK)
+            {
+                return SENSOR_MANAGER_ERR_DRIVER;
+            }
+        }
+        psContext->u32LastAppliedCalibrationCounter = sCalibration.u32UpdateCounter;
     }
 
     for (u8Idx = 0U; u8Idx < psContext->sConfig.u8ImuDeviceCount; u8Idx++)
@@ -70,13 +99,18 @@ te_SensorManagerRetCode SensorManager_Step(ts_SensorManagerContext *psContext)
             return SENSOR_MANAGER_ERR_DRIVER;
         }
 
-        if (sRawImu.bIsValid == true)
+        if ((sRawImu.bIsValid == true) &&
+            ((psContext->u8HasLastPublishedImuTimestamp == 0U) ||
+             (sRawImu.u32TimestampMs > psContext->u32LastPublishedImuTimestampMs)))
         {
             eGdsRet = Gds_PublishRawImu(&sRawImu);
             if (eGdsRet != GDS_OK)
             {
                 return SENSOR_MANAGER_ERR_GDS;
             }
+
+            psContext->u8HasLastPublishedImuTimestamp = 1U;
+            psContext->u32LastPublishedImuTimestampMs = sRawImu.u32TimestampMs;
         }
     }
 

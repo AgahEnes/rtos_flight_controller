@@ -1,0 +1,59 @@
+SERVO ACTUATOR CubeMX Aktivasyon Rehberi
+========================================
+
+Bu proje CMake + STM32CubeMX kod-uretimi kullandigi icin, asagidaki adimlar
+FMC -> GDS -> ActuatorTask -> Servo driver hattinin donanima baglanmasi icindir.
+
+1) PWM timer secimi (4 kanal)
+-----------------------------
+- CubeMX `.ioc` dosyasini ac.
+- Genel amacli bir timer sec (ornek: TIM1 veya TIM2).
+- Timer icin 4 PWM kanali ac: CH1, CH2, CH3, CH4.
+- PWM frekansi 50 Hz olacak sekilde ayarla (periyot 20 ms).
+- CCR degerleri 500-2500 us araligini cozebilecek hassasiyette olmalidir.
+
+2) Pin secimi
+-------------
+- PWM kanal pinlerini kart baglantina gore ata.
+- Her kanal bir servo sinyal hatti olacaktir.
+- Onerilen mantiksal esleme:
+  - CH1 -> fin[0] -> FMC_FIN_INDEX_POS_Y
+  - CH2 -> fin[1] -> FMC_FIN_INDEX_POS_X
+  - CH3 -> fin[2] -> FMC_FIN_INDEX_NEG_Y
+  - CH4 -> fin[3] -> FMC_FIN_INDEX_NEG_X
+
+3) NVIC ayarlari
+----------------
+- Bu entegrasyonda PWM register yazimi kullaniliyor; timer update interrupt zorunlu degil.
+- Baska bir ozellik timer interrupt kullaniyorsa sadece o baglam icin etkinlestir.
+
+4) Kod uretimi
+--------------
+- "Project Manager -> Code Generator -> Keep User Code when re-generating" acik olmali.
+- Code generation calistir.
+
+5) Uretim sonrasi kontrol listesi
+---------------------------------
+- `Core/Src/main.c`: secilen timerin `MX_TIMx_Init()` cagrisi mevcut olmali.
+- `Core/Src/main.c`: `AppPlatformPort_Init(&hi2c1, &huart2, &htim1)` cagrisi
+  proje timer handle'i ile uyumlu olmali (`htim1` yerine secilen handle gerekirse degistirilmeli).
+- `Core/Src/main.c` veya uygun USER CODE blogunda timer PWM baslatma adimlari
+  CubeMX tarafinda korunmali (`HAL_TIM_PWM_Start(..., TIM_CHANNEL_1..4)`).
+- `Core/Src/stm32f4xx_hal_msp.c`: secilen timer PWM pin AF konfigleri olusmus olmali.
+- `Core/Inc/main.h`: secilen timer handle declaration kod-uretimle gelmis olmali.
+
+6) Servo wiring sozlesmesi (yazilim katmani)
+--------------------------------------------
+- `AppPlatformPort_prvInitServos()` tek timerdan 4 kanali kullanir.
+- Kanal sirasi yazilimda sabittir: CH1, CH2, CH3, CH4.
+- Her actuator cihazinin aci komutu `Servo_Write(angle_rad)` ile iletilir.
+- Aci birimi radyandir; FMC cikisi `f32FinAngleRad[4]` dogrudan aktarilir.
+- `ActuatorManager` sadece `bIsActive == true` ve yeni `u32Sequence` geldiginde yazar.
+  Inaktif veya tekrar eden komutlarda son servo konumu korunur (hold-last).
+
+7) Dogrulama adimlari
+---------------------
+- Host test: `actuator_unit_tests` calisiyor olmali.
+- Hedefte debug:
+  - STABILIZE moda gecmeden servo cikisinda hareket beklenmez.
+  - STABILIZE modda GDS `u32Sequence` arttikca PWM compare degerleri degismelidir.

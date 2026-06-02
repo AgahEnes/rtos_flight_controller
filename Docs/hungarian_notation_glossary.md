@@ -20,6 +20,8 @@ Bu dokuman projede kullanilan Macar notasyonu (Hungarian notation) kisaltmalarin
 ## Pointer and Container Prefixes
 
 - `p`    : pointer (generic)
+- `pfn`  : pointer to function (`p` + `fn`)
+- `tpfn` : typedef pointer-to-function (`t` + `pfn`)
 - `px`   : pointer to external handle/object
 - `ps`   : pointer to struct
 - `pu8`  : pointer to `uint8_t`
@@ -32,6 +34,7 @@ Bu dokuman projede kullanilan Macar notasyonu (Hungarian notation) kisaltmalarin
 
 ## Object Kind Prefixes
 
+- `fn`   : function (role marker; typically with `p` as `pfn`)
 - `x`    : RTOS object/handle (task, mutex, queue, semaphore)
 - `e`    : enum value
 - `t`    : typedef type
@@ -47,6 +50,7 @@ Bu dokuman projede kullanilan Macar notasyonu (Hungarian notation) kisaltmalarin
 - `gx`   : global RTOS object
 - `prv`  : private/internal (module-local helper)
 - `k`    : compile-time constant (tercih edildiginde)
+- `ks`   : const struct instance (`k` + `s`)
 
 ## Naming Rules
 
@@ -88,6 +92,8 @@ Bu bolum, yukaridaki sozlugun Turkce karsiligidir.
 ### Isaretci ve Kapsayici On Ekleri (Pointer and Container Prefixes)
 
 - `p`    : genel isaretci
+- `pfn`  : fonksiyon isaretcisi (`p` + `fn`)
+- `tpfn` : typedef fonksiyon isaretcisi (`t` + `pfn`)
 - `px`   : harici sahiplikte handle/nesne isaretcisi
 - `ps`   : struct isaretcisi
 - `pu8`  : `uint8_t` isaretcisi
@@ -100,6 +106,7 @@ Bu bolum, yukaridaki sozlugun Turkce karsiligidir.
 
 ### Nesne Turu On Ekleri (Object Kind Prefixes)
 
+- `fn`   : fonksiyon (rol; genelde `pfn` icinde `p` ile birlikte)
 - `x`    : RTOS nesnesi/handle (`task`, `mutex`, `queue`, `semaphore`)
 - `e`    : enum degeri
 - `t`    : typedef tipi
@@ -115,6 +122,7 @@ Bu bolum, yukaridaki sozlugun Turkce karsiligidir.
 - `gx`   : global RTOS nesnesi
 - `prv`  : private/internal (modul-ici yardimci)
 - `k`    : derleme zamani sabiti (kullanilan yerlerde)
+- `ks`   : const struct ornegi (`k` + `s`)
 
 ### Adlandirma Kurallari (Naming Rules)
 

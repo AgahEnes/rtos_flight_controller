@@ -1,6 +1,14 @@
 build
+build-host
+build-host-tests
 mx.scratch
 !.settings
 node_modules
 dist
 .DS_Store
+
+# macOS
+.DS_Store
+
+# Cursor / IDE local
+.cursor/

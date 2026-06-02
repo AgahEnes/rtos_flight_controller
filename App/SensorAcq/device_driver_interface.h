@@ -19,11 +19,13 @@ typedef enum
 
 typedef te_ImuDriverRetCode (*tpfn_ImuDriverInit)(void *vpContext);
 typedef te_ImuDriverRetCode (*tpfn_ImuDriverReadImu)(void *vpContext, ts_TopicRawImu *psRawImu);
+typedef te_ImuDriverRetCode (*tpfn_ImuDriverSetBias)(void *vpContext, const ts_TopicImuCalibration *psCalibration);
 
 typedef struct
 {
     tpfn_ImuDriverInit pfnInit;
     tpfn_ImuDriverReadImu pfnReadImu;
+    tpfn_ImuDriverSetBias pfnSetBias;
 } ts_ImuDriverVTable;
 
 typedef struct

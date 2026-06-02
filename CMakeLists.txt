@@ -38,6 +38,7 @@ add_executable(${CMAKE_PROJECT_NAME})
 add_subdirectory(cmake/stm32cubemx)
 
 set(MPU6050_DRV_DIR ${CMAKE_SOURCE_DIR}/Drivers/mpu6050)
+set(SERVO_DRV_DIR ${CMAKE_SOURCE_DIR}/Drivers/servo)
 set(APP_DIR ${CMAKE_SOURCE_DIR}/App)
 set(PLATFORM_DIR ${CMAKE_SOURCE_DIR}/Platform)
 
@@ -50,16 +51,27 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     ${MPU6050_DRV_DIR}/mpu6050_driver.c
     ${MPU6050_DRV_DIR}/mpu6050_stm32_hal_port.c
+    ${SERVO_DRV_DIR}/servo_driver.c
+    ${SERVO_DRV_DIR}/servo_stm32_hal_port.c
     ${APP_DIR}/SensorAcq/global_data_space.c
     ${APP_DIR}/SensorAcq/sensor_manager.c
+    ${APP_DIR}/Actuator/actuator_manager.c
+    ${APP_DIR}/Navigation/navigation_subsystem.c
+    ${APP_DIR}/FlightManagementControl/flight_control.c
     ${APP_DIR}/Telemetry/telemetry_task.c
     ${PLATFORM_DIR}/STM32/mpu6050_ddi_adapter.c
-    ${PLATFORM_DIR}/STM32/sensor_acq_port.c
+    ${PLATFORM_DIR}/STM32/servo_ddi_adapter.c
+    ${PLATFORM_DIR}/STM32/app_platform_port.c
 )
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
+    ${CMAKE_SOURCE_DIR}/Drivers
     ${MPU6050_DRV_DIR}
+    ${SERVO_DRV_DIR}
     ${APP_DIR}/SensorAcq
+    ${APP_DIR}/Actuator
+    ${APP_DIR}/Navigation
+    ${APP_DIR}/FlightManagementControl
     ${APP_DIR}/Telemetry
     ${PLATFORM_DIR}/STM32
 )
