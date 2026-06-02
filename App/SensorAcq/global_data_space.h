@@ -70,6 +70,15 @@ typedef struct
 
 typedef struct
 {
+    float f32TemperatureC;
+    float f32PressurePa;
+    float f32AltitudeM;
+    uint32_t u32TimestampMs;
+    bool bIsValid;
+} ts_TopicBarometer;
+
+typedef struct
+{
     float f32FinAngleRad[4];
     uint32_t u32TimestampMs;
     uint32_t u32Sequence;
@@ -95,6 +104,9 @@ te_GdsRetCode Gds_ReadImuCalibration(ts_TopicImuCalibration *psCalibration);
 void Gds_ResetNavCommand(void);
 te_GdsRetCode Gds_PublishNavCommand(const ts_TopicNavCommand *psCommand);
 te_GdsRetCode Gds_ReadNavCommand(ts_TopicNavCommand *psCommand);
+void Gds_ResetBarometer(void);
+te_GdsRetCode Gds_PublishBarometer(const ts_TopicBarometer *psBarometer);
+te_GdsRetCode Gds_ReadBarometer(ts_TopicBarometer *psBarometer);
 void Gds_ResetActuatorCmd(void);
 te_GdsRetCode Gds_PublishActuatorCmd(const ts_TopicActuatorCmd *psCommand);
 te_GdsRetCode Gds_ReadActuatorCmd(ts_TopicActuatorCmd *psCommand);

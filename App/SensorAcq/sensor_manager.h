@@ -10,6 +10,7 @@ extern "C" {
 #include "device_driver_interface.h"
 
 #define SENSOR_MANAGER_MAX_IMU_DEVICES    (4U)
+#define SENSOR_MANAGER_MAX_BARO_DEVICES   (2U)
 
 typedef enum
 {
@@ -24,6 +25,9 @@ typedef struct
 {
     ts_ImuDevice *psImuDevices;
     uint8_t u8ImuDeviceCount;
+    ts_BaroDevice *psBaroDevices;
+    uint8_t u8BaroDeviceCount;
+    uint8_t u8BaroReadPeriodTicks;
 } ts_SensorManagerConfig;
 
 typedef struct
@@ -31,7 +35,10 @@ typedef struct
     ts_SensorManagerConfig sConfig;
     uint32_t u32LastAppliedCalibrationCounter;
     uint32_t u32LastPublishedImuTimestampMs;
+    uint32_t u32LastPublishedBaroTimestampMs;
     uint8_t u8HasLastPublishedImuTimestamp;
+    uint8_t u8HasLastPublishedBaroTimestamp;
+    uint8_t u8BaroReadTickCounter;
     uint8_t u8IsInitialized;
 } ts_SensorManagerContext;
 
