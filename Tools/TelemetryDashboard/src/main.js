@@ -86,7 +86,8 @@ function makeInitialSnapshot() {
     packetFormat: "none",
     packetLabel: "--",
     timestampMs: 0,
-    mode: "ACQUIRING",
+    mode: "NO CONNECTION",
+    modePill: "NO CONNECTION",
     rollDeg: 0,
     pitchDeg: 0,
     yawDeg: 0,
@@ -106,8 +107,11 @@ function fmt(value, digits = 1) {
 }
 
 function displayModeText(mode) {
-  const text = String(mode ?? "ACQUIRING");
-  return text.length > 0 ? text.charAt(0).toUpperCase() + text.slice(1).toLowerCase() : "Acquiring";
+  const text = String(mode ?? "NO CONNECTION").trim();
+  if (text.length === 0) {
+    return "NO CONNECTION";
+  }
+  return text.toUpperCase();
 }
 
 function readServoAngles(source) {
@@ -122,9 +126,11 @@ function readServoAngles(source) {
   return null;
 }
 
-function setModeVisual(mode) {
-  ui.modePill.dataset.mode = String(mode ?? "ACQUIRING").toLowerCase();
-  ui.modePill.textContent = String(mode ?? "ACQUIRING").toUpperCase();
+function setModeVisual(mode, modePill = null) {
+  const resolvedMode = String(mode ?? "NO CONNECTION").toUpperCase();
+  const resolvedPill = String(modePill ?? resolvedMode).toLowerCase();
+  ui.modePill.dataset.mode = resolvedPill;
+  ui.modePill.textContent = resolvedMode;
   ui.modeText.textContent = displayModeText(mode);
 }
 
@@ -137,7 +143,7 @@ function updateUi(snapshot, sourceLabel) {
   const linkLive = (lastPacketAt > 0) && ((performance.now() - lastPacketAt) < 1600);
   const servosDeg = Array.isArray(snapshot.servosDeg) ? snapshot.servosDeg : [0, 0, 0, 0];
 
-  setModeVisual(snapshot.mode);
+  setModeVisual(snapshot.mode, snapshot.modePill);
   setLinkVisual(linkLive);
   ui.sourceBadge.textContent = sourceLabel;
   ui.roll.textContent = `${fmt(snapshot.rollDeg)} deg`;
@@ -200,6 +206,9 @@ function ingestFrame(frame, sourceLabel) {
   }
   if (frame.mode !== null && frame.mode !== undefined && String(frame.mode).trim().length > 0) {
     latestSnapshot.mode = String(frame.mode).trim();
+  }
+  if (frame.modePill !== null && frame.modePill !== undefined && String(frame.modePill).trim().length > 0) {
+    latestSnapshot.modePill = String(frame.modePill).trim().toLowerCase();
   }
 
   const servosDeg = readServoAngles(frame.servo);

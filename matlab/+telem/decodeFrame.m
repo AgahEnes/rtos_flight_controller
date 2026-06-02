@@ -4,7 +4,7 @@ function sFrame = decodeFrame(u8Frame, c)
 % sFrame fields:
 %   sequence, timestampMs, accelMps2[1x3], gyroRadS[1x3], tempC,
 %   rollRad, pitchRad, yawRad, rollRateRadS, pitchRateRadS, yawRateRadS,
-%   isEstimated, crcRx, crcCalc, crcOk.
+%   isEstimated, flightMode, crcRx, crcCalc, crcOk.
 
 if nargin < 2
     c = telem.FrameConstants();
@@ -44,6 +44,7 @@ sFrame.rollRateRadS = double(f32Vehicle(4));
 sFrame.pitchRateRadS = double(f32Vehicle(5));
 sFrame.yawRateRadS = double(f32Vehicle(6));
 sFrame.isEstimated = (u8Frame(c.idxIsEstimated) ~= 0);
+sFrame.flightMode = uint8(u8Frame(c.idxFlightMode));
 sFrame.crcRx = u16RxCrc;
 sFrame.crcCalc = u16CalcCrc;
 sFrame.crcOk = (u16RxCrc == u16CalcCrc);

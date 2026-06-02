@@ -33,6 +33,13 @@ typedef struct
 
 typedef struct
 {
+    ts_TopicFlightStatus asFlightStatusBuffers[2];
+    atomic_uint_fast8_t u8ActiveBufferIdx;
+    atomic_uint_fast32_t u32SeqLock;
+} ts_GdsFlightStatusStorage;
+
+typedef struct
+{
     ts_TopicBarometer asBarometerBuffers[2];
     atomic_uint_fast8_t u8ActiveBufferIdx;
     atomic_uint_fast32_t u32SeqLock;
@@ -49,6 +56,7 @@ static ts_GdsRawImuStorage gsRawImuStorage;
 static ts_GdsVehicleStateStorage gsVehicleStateStorage;
 static ts_GdsImuCalibrationStorage gsImuCalibrationStorage;
 static ts_GdsNavCommandStorage gsNavCommandStorage;
+static ts_GdsFlightStatusStorage gsFlightStatusStorage;
 static ts_GdsBarometerStorage gsBarometerStorage;
 static ts_GdsActuatorCmdStorage gsActuatorCmdStorage;
 
@@ -99,6 +107,18 @@ void Gds_ResetNavCommand(void)
     gsNavCommandStorage.asNavCommandBuffers[1] = sZeroTopic;
     (void)atomic_store_explicit(&gsNavCommandStorage.u8ActiveBufferIdx, 0U, memory_order_relaxed);
     (void)atomic_store_explicit(&gsNavCommandStorage.u32SeqLock, 0U, memory_order_relaxed);
+}
+
+void Gds_ResetFlightStatus(void)
+{
+    ts_TopicFlightStatus sZeroTopic;
+
+    (void)memset(&sZeroTopic, 0, sizeof(sZeroTopic));
+    (void)memset(&gsFlightStatusStorage, 0, sizeof(gsFlightStatusStorage));
+    gsFlightStatusStorage.asFlightStatusBuffers[0] = sZeroTopic;
+    gsFlightStatusStorage.asFlightStatusBuffers[1] = sZeroTopic;
+    (void)atomic_store_explicit(&gsFlightStatusStorage.u8ActiveBufferIdx, 0U, memory_order_relaxed);
+    (void)atomic_store_explicit(&gsFlightStatusStorage.u32SeqLock, 0U, memory_order_relaxed);
 }
 
 void Gds_ResetActuatorCmd(void)
@@ -324,6 +344,58 @@ te_GdsRetCode Gds_ReadNavCommand(ts_TopicNavCommand *psCommand)
         *psCommand = gsNavCommandStorage.asNavCommandBuffers[u8ActiveIdx];
 
         u32SeqEnd = (uint32_t)atomic_load_explicit(&gsNavCommandStorage.u32SeqLock, memory_order_acquire);
+        if ((u32SeqStart == u32SeqEnd) && ((u32SeqEnd & 1U) == 0U))
+        {
+            return GDS_OK;
+        }
+    }
+
+    return GDS_ERR_INCONSISTENT_READ;
+}
+
+te_GdsRetCode Gds_PublishFlightStatus(const ts_TopicFlightStatus *psFlightStatus)
+{
+    uint8_t u8ActiveIdx;
+    uint8_t u8WriteIdx;
+
+    if (psFlightStatus == NULL)
+    {
+        return GDS_ERR_ARG;
+    }
+
+    (void)atomic_fetch_add_explicit(&gsFlightStatusStorage.u32SeqLock, 1U, memory_order_acq_rel);
+
+    u8ActiveIdx = (uint8_t)atomic_load_explicit(&gsFlightStatusStorage.u8ActiveBufferIdx, memory_order_acquire);
+    u8WriteIdx = (uint8_t)((uint8_t)1U - u8ActiveIdx);
+
+    gsFlightStatusStorage.asFlightStatusBuffers[u8WriteIdx] = *psFlightStatus;
+
+    (void)atomic_store_explicit(&gsFlightStatusStorage.u8ActiveBufferIdx, u8WriteIdx, memory_order_release);
+    (void)atomic_fetch_add_explicit(&gsFlightStatusStorage.u32SeqLock, 1U, memory_order_acq_rel);
+
+    return GDS_OK;
+}
+
+te_GdsRetCode Gds_ReadFlightStatus(ts_TopicFlightStatus *psFlightStatus)
+{
+    uint32_t u32SeqStart;
+    uint32_t u32SeqEnd;
+    uint8_t u8ActiveIdx;
+    uint32_t u32RetryCount;
+
+    if (psFlightStatus == NULL)
+    {
+        return GDS_ERR_ARG;
+    }
+
+    for (u32RetryCount = 0U; u32RetryCount < 3U; u32RetryCount++)
+    {
+        u32SeqStart = (uint32_t)atomic_load_explicit(&gsFlightStatusStorage.u32SeqLock, memory_order_acquire);
+
+        u8ActiveIdx = (uint8_t)atomic_load_explicit(&gsFlightStatusStorage.u8ActiveBufferIdx, memory_order_acquire);
+        *psFlightStatus = gsFlightStatusStorage.asFlightStatusBuffers[u8ActiveIdx];
+
+        u32SeqEnd = (uint32_t)atomic_load_explicit(&gsFlightStatusStorage.u32SeqLock, memory_order_acquire);
         if ((u32SeqStart == u32SeqEnd) && ((u32SeqEnd & 1U) == 0U))
         {
             return GDS_OK;

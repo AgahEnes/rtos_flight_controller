@@ -27,6 +27,7 @@ typedef struct
     float f32PitchRateRadS;
     float f32YawRateRadS;
     uint8_t u8IsEstimated;
+    uint8_t u8FlightMode;
 } ts_TelemetryVehicleStatePayload;
 
 typedef struct
@@ -132,6 +133,7 @@ static uint16_t TelemetryTask_prvPackMessage(const ts_TelemetryPayload *psPayloa
     TelemetryTask_prvWriteF32Le(&pu8OutBuffer[u16Offset], psPayload->sVehicleState.f32YawRateRadS);
     u16Offset += 4U;
     pu8OutBuffer[u16Offset++] = psPayload->sVehicleState.u8IsEstimated;
+    pu8OutBuffer[u16Offset++] = psPayload->sVehicleState.u8FlightMode;
 
     u16Crc = TelemetryTask_prvCrc16Ccitt(pu8OutBuffer, u16Offset);
     pu8OutBuffer[u16Offset++] = (uint8_t)(u16Crc & 0xFFU);
@@ -209,6 +211,7 @@ static te_TelemetryTaskRetCode TelemetryTask_prvRunSyncSlot(ts_TelemetryTaskCont
 {
     ts_TopicRawImu sRawImu;
     ts_TopicVehicleState sVehicleState;
+    ts_TopicFlightStatus sFlightStatus;
     ts_TelemetryPayload sPayload;
     te_GdsRetCode eGdsRet;
     uint16_t u16PacketLength;
@@ -227,6 +230,13 @@ static te_TelemetryTaskRetCode TelemetryTask_prvRunSyncSlot(ts_TelemetryTaskCont
         (void)memset(&sVehicleState, 0, sizeof(sVehicleState));
     }
 
+    (void)memset(&sFlightStatus, 0, sizeof(sFlightStatus));
+    eGdsRet = Gds_ReadFlightStatus(&sFlightStatus);
+    if (eGdsRet != GDS_OK)
+    {
+        (void)memset(&sFlightStatus, 0, sizeof(sFlightStatus));
+    }
+
     sPayload.u8Sequence = psContext->u8Sequence;
     sPayload.u32TimestampMs = psContext->sConfig.pfnGetTickMs(psContext->sConfig.vpTickContext);
     sPayload.sImu.f32AccelXMps2 = sRawImu.sAccel.f32X;
@@ -243,6 +253,7 @@ static te_TelemetryTaskRetCode TelemetryTask_prvRunSyncSlot(ts_TelemetryTaskCont
     sPayload.sVehicleState.f32PitchRateRadS = sVehicleState.f32PitchRateRadS;
     sPayload.sVehicleState.f32YawRateRadS = sVehicleState.f32YawRateRadS;
     sPayload.sVehicleState.u8IsEstimated = (sVehicleState.bIsEstimated == true) ? 1U : 0U;
+    sPayload.sVehicleState.u8FlightMode = sFlightStatus.u8FlightMode;
 
     u16PacketLength = TelemetryTask_prvPackMessage(&sPayload,
                                                    psContext->sConfig.pu8TxBuffer,

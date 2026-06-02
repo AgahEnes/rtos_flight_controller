@@ -6,12 +6,17 @@ export const MSG_ID_LEGACY_IMU = 0x10;
 export const MSG_ID_IMU_VEHICLE_STATE = 0x12;
 export const MSG_ID_IMU_CALIBRATION = 0x81;
 export const LEGACY_IMU_FRAME_LENGTH = 38;
-export const VEHICLE_STATE_FRAME_LENGTH = 63;
+export const VEHICLE_STATE_FRAME_LENGTH = 64;
 export const CALIBRATION_FRAME_LENGTH = 43;
 export const EXTENDED_FRAME_LENGTH = 71;
 export const EXTENDED_PAYLOAD_LENGTH = 65;
 export const ASCII_PACKET_START = 0x24;
 export const ASCII_LINE_FEED = 0x0a;
+export const FLIGHT_MODE_PREFLIGHT = 0;
+export const FLIGHT_MODE_READY_FOR_IGNITION = 1;
+export const FLIGHT_MODE_BOOST = 2;
+export const FLIGHT_MODE_STABILIZE = 3;
+export const FLIGHT_MODE_FAILSAFE = 4;
 
 const RAD_TO_DEG = 180 / Math.PI;
 
@@ -116,6 +121,23 @@ function parseFirmwareMode(modeText) {
   return mode.length > 0 ? mode : null;
 }
 
+function flightModeToUi(modeByte) {
+  switch (modeByte) {
+    case FLIGHT_MODE_PREFLIGHT:
+      return { mode: "PREFLIGHT", modePill: "preflight" };
+    case FLIGHT_MODE_READY_FOR_IGNITION:
+      return { mode: "READY_FOR_IGNITION", modePill: "ready_for_ignition" };
+    case FLIGHT_MODE_BOOST:
+      return { mode: "BOOST", modePill: "boost" };
+    case FLIGHT_MODE_STABILIZE:
+      return { mode: "STABILIZE", modePill: "stabilize" };
+    case FLIGHT_MODE_FAILSAFE:
+      return { mode: "FAILSAFE", modePill: "failsafe" };
+    default:
+      return { mode: "UNKNOWN", modePill: null };
+  }
+}
+
 function parseAsciiChecksum(lineBytes, starIndex) {
   let checksum = 0;
   for (let i = 1; i < starIndex; i += 1) {
@@ -218,6 +240,7 @@ function parseLegacyImuFrame(frame) {
 
 function parseVehicleStateFrame(frame) {
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
+  const parsedMode = flightModeToUi(frame[61]);
   return {
     type: "imu-vehicle-state",
     packetFormat: "agah-imu-vehicle-state",
@@ -246,7 +269,9 @@ function parseVehicleStateFrame(frame) {
       pitch: readFloat32Le(view, 52),
       yaw: readFloat32Le(view, 56)
     },
-    isEstimated: frame[60] !== 0
+    isEstimated: frame[60] !== 0,
+    mode: parsedMode.mode,
+    modePill: parsedMode.modePill
   };
 }
 

@@ -14,8 +14,8 @@ If a packet does not contain a field, the corresponding UI value stays at its in
 
 - Sync: `0xA5 0x5A`
 - Message id: `0x12`
-- Length: 63 bytes
-- Payload: timestamp, accel XYZ, gyro XYZ, IMU temperature, roll/pitch/yaw, roll-rate/pitch-rate/yaw-rate, estimator-valid flag
+- Length: 64 bytes
+- Payload: timestamp, accel XYZ, gyro XYZ, IMU temperature, roll/pitch/yaw, roll-rate/pitch-rate/yaw-rate, estimator-valid flag, flight-mode byte (`te_FlightMode` 0..4)
 - CRC: CRC16/CCITT-FALSE, little-endian
 
 This is the primary firmware packet currently used by Agah's `telemetry_task.c`.
@@ -132,7 +132,6 @@ This is a useful rehearsal for the ESP32 path because the dashboard is accessed 
 
 For the final demo, firmware telemetry can later add these fields:
 
-- Flight mode: acquiring, balanced, recovering, failure.
 - Four servo fin command angles.
 - BMP180 pressure, altitude, and barometer temperature.
 - Packet health counters or fault bits.

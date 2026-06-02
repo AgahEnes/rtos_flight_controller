@@ -389,6 +389,7 @@ TEST(TelemetryTaskTest, StepTransmitsCombinedFrameIncludingEstimatedVehicleState
     ts_TelemetryTaskConfig sConfig {};
     ts_TopicRawImu sRawImu {};
     ts_TopicVehicleState sVehicleState {};
+    ts_TopicFlightStatus sFlightStatus {};
     uint8_t au8TxBuffer[TELEMETRY_TASK_MAX_TX_BUFFER_LENGTH] = {0};
 
     g_bUartTxCalled = false;
@@ -421,11 +422,15 @@ TEST(TelemetryTaskTest, StepTransmitsCombinedFrameIncludingEstimatedVehicleState
     sVehicleState.f32YawRateRadS = 1.23F;
     sVehicleState.u32TimestampMs = 2000U;
     sVehicleState.bIsEstimated = true;
+    sFlightStatus.u8FlightMode = 3U;
+    sFlightStatus.u32TimestampMs = 2000U;
 
     Gds_ResetRawImu();
     Gds_ResetVehicleState();
+    Gds_ResetFlightStatus();
     ASSERT_EQ(Gds_PublishRawImu(&sRawImu), GDS_OK);
     ASSERT_EQ(Gds_PublishVehicleState(&sVehicleState), GDS_OK);
+    ASSERT_EQ(Gds_PublishFlightStatus(&sFlightStatus), GDS_OK);
     ASSERT_EQ(TelemetryTask_Init(&sContext, &sConfig), TELEMETRY_TASK_OK);
     ASSERT_EQ(TelemetryTask_Step(&sContext), TELEMETRY_TASK_OK);
 
@@ -440,8 +445,13 @@ TEST(TelemetryTaskTest, StepTransmitsCombinedFrameIncludingEstimatedVehicleState
     EXPECT_EQ(g_au8LastFrame[TELEMETRY_TASK_FRAME_HEADER_LENGTH +
                             TELEMETRY_TASK_PACKET_TIMESTAMP_LENGTH +
                             TELEMETRY_TASK_IMU_PACKET_LENGTH +
-                            TELEMETRY_TASK_VEHICLE_PACKET_LENGTH - 1U],
+                            TELEMETRY_TASK_VEHICLE_PACKET_LENGTH - 2U],
               1U);
+    EXPECT_EQ(g_au8LastFrame[TELEMETRY_TASK_FRAME_HEADER_LENGTH +
+                            TELEMETRY_TASK_PACKET_TIMESTAMP_LENGTH +
+                            TELEMETRY_TASK_IMU_PACKET_LENGTH +
+                            TELEMETRY_TASK_VEHICLE_PACKET_LENGTH - 1U],
+              sFlightStatus.u8FlightMode);
     EXPECT_EQ(prvReadCrc16Le(g_au8LastFrame,
                              TELEMETRY_TASK_FRAME_LENGTH - TELEMETRY_TASK_FRAME_CRC_LENGTH),
               prvCrc16CcittFalse(g_au8LastFrame,

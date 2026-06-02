@@ -53,7 +53,7 @@ DMA_HandleTypeDef hdma_usart2_tx;
 
 /* Definitions for defaultTask */
 osThreadId_t defaultTaskHandle;
-uint32_t defaultTaskBuffer[ 128 ];
+uint32_t defaultTaskBuffer[ 512 ];
 osStaticThreadDef_t defaultTaskControlBlock;
 const osThreadAttr_t defaultTask_attributes = {
   .name = "defaultTask",
@@ -126,11 +126,8 @@ int main(void)
   osKernelInitialize();
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* DMA flow uses active-low data-ready interrupt from MPU6050. */
-  if (AppPlatformPort_Init(&hi2c1, &huart2, &htim1) == false)
-  {
-    Error_Handler();
-  }
+  /* AppPlatformPort_Init runs from StartDefaultTask after osKernelStart so
+     driver startup delays use osDelay instead of blocking on HAL tick. */
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -150,10 +147,7 @@ int main(void)
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  if (AppPlatformPort_CreateTask() == NULL)
-  {
-    Error_Handler();
-  }
+  /* Sensor/telemetry tasks are created from StartDefaultTask after platform init. */
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -487,9 +481,20 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+  if (AppPlatformPort_Init(&hi2c1, &huart2, &htim1) == false)
+  {
+    Error_Handler();
+  }
+
+  if (AppPlatformPort_CreateTask() == NULL)
+  {
+    Error_Handler();
+  }
+
   for (;;)
   {
-    osDelay(1);
+    //osDelay(1000);
+    osThreadSuspend(osThreadGetId());
   }
   /* USER CODE END 5 */
 }

@@ -8,8 +8,8 @@ The dashboard is a visualization endpoint only. It must not estimate attitude, i
 | --- | --- |
 | Sync | `0xA5 0x5A` |
 | Message id | `0x12` |
-| Length | 63 bytes |
-| Payload | timestamp, accel XYZ, gyro XYZ, IMU temperature, roll/pitch/yaw, roll-rate/pitch-rate/yaw-rate, estimator-valid flag |
+| Length | 64 bytes |
+| Payload | timestamp, accel XYZ, gyro XYZ, IMU temperature, roll/pitch/yaw, roll-rate/pitch-rate/yaw-rate, estimator-valid flag, flight mode (`te_FlightMode` as `uint8`) |
 | CRC | CRC16/CCITT-FALSE over all bytes before CRC |
 
 The dashboard uses this packet as the primary live source for IMU and attitude visualization.
@@ -57,7 +57,6 @@ For the final balance-platform presentation, extend firmware telemetry with expl
 
 | Field | Suggested type | Unit |
 | --- | --- | --- |
-| Flight mode | `uint8` or enum-coded `uint8` | acquiring, balanced, recovering, failure |
 | Fault bits | `uint16_le` | bit field |
 | Servo A | `float32_le` | degree |
 | Servo B | `float32_le` | degree |

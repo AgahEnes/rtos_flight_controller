@@ -239,6 +239,27 @@ h1 {
   border-color: #9d4c42;
 }
 
+.mode-pill[data-mode="preflight"],
+.mode-pill[data-mode="ready_for_ignition"] {
+  color: #dbe6e2;
+  border-color: #374548;
+}
+
+.mode-pill[data-mode="boost"] {
+  color: #f1c65b;
+  border-color: #9a7a26;
+}
+
+.mode-pill[data-mode="stabilize"] {
+  color: #65d6b2;
+  border-color: #4aa88e;
+}
+
+.mode-pill[data-mode="failsafe"] {
+  color: #ff856f;
+  border-color: #9d4c42;
+}
+
 .link-pill[data-live="true"] {
   color: #65d6b2;
 }

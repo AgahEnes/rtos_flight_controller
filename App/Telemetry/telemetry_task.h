@@ -21,8 +21,8 @@ extern "C" {
 /* Payload bytes in combined frame: 7x float (accel/gyro/temp). */
 #define TELEMETRY_TASK_IMU_PACKET_LENGTH         (28U)
 
-/* Payload bytes in combined frame: 6x float (attitude/rates) + isEstimated. */
-#define TELEMETRY_TASK_VEHICLE_PACKET_LENGTH     (25U)
+/* Payload bytes in combined frame: 6x float (attitude/rates) + isEstimated + flightMode. */
+#define TELEMETRY_TASK_VEHICLE_PACKET_LENGTH     (26U)
 
 #define TELEMETRY_TASK_FRAME_PAYLOAD_LENGTH      (TELEMETRY_TASK_PACKET_TIMESTAMP_LENGTH + \
                                                     TELEMETRY_TASK_IMU_PACKET_LENGTH + \

@@ -70,6 +70,12 @@ typedef struct
 
 typedef struct
 {
+    uint8_t u8FlightMode;   /* te_FlightMode value encoded as 0..4 */
+    uint32_t u32TimestampMs;
+} ts_TopicFlightStatus;
+
+typedef struct
+{
     float f32TemperatureC;
     float f32PressurePa;
     float f32AltitudeM;
@@ -104,6 +110,9 @@ te_GdsRetCode Gds_ReadImuCalibration(ts_TopicImuCalibration *psCalibration);
 void Gds_ResetNavCommand(void);
 te_GdsRetCode Gds_PublishNavCommand(const ts_TopicNavCommand *psCommand);
 te_GdsRetCode Gds_ReadNavCommand(ts_TopicNavCommand *psCommand);
+void Gds_ResetFlightStatus(void);
+te_GdsRetCode Gds_PublishFlightStatus(const ts_TopicFlightStatus *psFlightStatus);
+te_GdsRetCode Gds_ReadFlightStatus(ts_TopicFlightStatus *psFlightStatus);
 void Gds_ResetBarometer(void);
 te_GdsRetCode Gds_PublishBarometer(const ts_TopicBarometer *psBarometer);
 te_GdsRetCode Gds_ReadBarometer(ts_TopicBarometer *psBarometer);

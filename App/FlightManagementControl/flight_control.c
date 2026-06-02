@@ -20,7 +20,7 @@
 #define FMC_DEFAULT_STATIONARY_VARIANCE_MAX                         (0.005F)
 #define FMC_DEFAULT_SETTLE_GYRO_MAX_RADS                            (0.01F)
 #define FMC_DEFAULT_SETTLE_ACCEL_TOL_MPS2                           (0.2F)
-#define FMC_DEFAULT_SETTLE_VARIANCE_MAX                             (0.001F)
+#define FMC_DEFAULT_SETTLE_VARIANCE_MAX                             (0.01F)
 #define FMC_DEFAULT_LAUNCH_ACCEL_TRIGGER_MPS2                       (20.0F)
 #define FMC_DEFAULT_INIT_MODE                                       (FLIGHT_MODE_PREFLIGHT)
 #define FMC_DEFAULT_INIT_SUB_STATE                                  (PREFLIGHT_SUB_PBIT_CHECK)
@@ -972,8 +972,10 @@ te_FlightControlRetCode FlightControl_Init(ts_FlightControlContext *psContext,
 te_FlightControlRetCode FlightControl_Step(ts_FlightControlContext *psContext)
 {
     ts_TopicRawImu sRawImu;
+    ts_TopicFlightStatus sFlightStatus;
     ts_FlightControlStepInputs sInputs;
     te_GdsRetCode eRawReadRet;
+    te_GdsRetCode eStatusWriteRet;
     te_FlightControlRetCode eStepRet;
 
     if (psContext == NULL)
@@ -1023,6 +1025,14 @@ te_FlightControlRetCode FlightControl_Step(ts_FlightControlContext *psContext)
         default:
             eStepRet = FlightControl_prvStepFailsafe(psContext, &sInputs);
             break;
+    }
+
+    sFlightStatus.u8FlightMode = (uint8_t)psContext->eMode;
+    sFlightStatus.u32TimestampMs = psContext->u32ModuleTimestampMs;
+    eStatusWriteRet = Gds_PublishFlightStatus(&sFlightStatus);
+    if (eStatusWriteRet != GDS_OK)
+    {
+        return FLIGHT_CONTROL_ERR_GDS;
     }
 
     return eStepRet;
