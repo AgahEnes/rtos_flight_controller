@@ -191,7 +191,7 @@ h1 {
 }
 
 .link-pill,
-.estimator-badge {
+.source-badge {
   min-height: 32px;
   display: inline-flex;
   align-items: center;

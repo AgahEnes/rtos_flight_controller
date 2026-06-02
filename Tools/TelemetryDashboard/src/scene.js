@@ -27,14 +27,10 @@ function createOgiveGeometry(radius, height, radialSegments = 64) {
 
 function normalizedServos(snapshot) {
   if (Array.isArray(snapshot.servosDeg) && snapshot.servosDeg.length >= 4) {
-    return snapshot.servosDeg.slice(0, 4);
+    return snapshot.servosDeg.slice(0, 4).map((value) => (Number.isFinite(value) ? value : 0));
   }
 
-  const servoA = Number.isFinite(snapshot.servoA) ? snapshot.servoA : 0;
-  const servoB = Number.isFinite(snapshot.servoB) ? snapshot.servoB : 0;
-  const servoC = Number.isFinite(snapshot.servoC) ? snapshot.servoC : -servoA;
-  const servoD = Number.isFinite(snapshot.servoD) ? snapshot.servoD : -servoB;
-  return [servoA, servoB, servoC, servoD];
+  return [0, 0, 0, 0];
 }
 
 export class VehicleScene {

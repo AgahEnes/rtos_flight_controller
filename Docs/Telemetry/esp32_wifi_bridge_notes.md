@@ -20,7 +20,7 @@ The ESP32 should not convert the telemetry packet to text. It should forward the
 
 ## Temporary Wired Relay While ESP32 Is Missing
 
-This mode simulates the ESP32 transport on the computer:
+This mode rehearses the ESP32 transport on the computer:
 
 ```text
 STM32 telemetry_task.c
@@ -91,7 +91,7 @@ The included ESP32 sketch starts an access point:
 
 ## Current Blocking Points
 
-- The dashboard is ready for binary `0xA5 0x5A` legacy packets and `0xAA 0x55` mentor extended packets.
+- The dashboard is ready for Agah `0xA5 0x5A / 0x12` state packets, Agah `0x81` calibration packets, legacy `0x10` packets, and `0xAA 0x55` mentor extended packets.
 - ESP32 firmware needs the `WebSocketsServer` Arduino library.
 - STM32 UART must send the same telemetry stream to the ESP32 UART RX.
 - The final packet layout must stay byte-for-byte consistent with the dashboard parser.

@@ -2,14 +2,18 @@ export const LEGACY_SYNC_0 = 0xa5;
 export const LEGACY_SYNC_1 = 0x5a;
 export const EXTENDED_SYNC_0 = 0xaa;
 export const EXTENDED_SYNC_1 = 0x55;
-export const TELEMETRY_SYNC_0 = LEGACY_SYNC_0;
-export const TELEMETRY_SYNC_1 = LEGACY_SYNC_1;
-export const MSG_ID_IMU = 0x10;
-export const IMU_FRAME_LENGTH = 38;
+export const MSG_ID_LEGACY_IMU = 0x10;
+export const MSG_ID_IMU_VEHICLE_STATE = 0x12;
+export const MSG_ID_IMU_CALIBRATION = 0x81;
+export const LEGACY_IMU_FRAME_LENGTH = 38;
+export const VEHICLE_STATE_FRAME_LENGTH = 63;
+export const CALIBRATION_FRAME_LENGTH = 43;
 export const EXTENDED_FRAME_LENGTH = 71;
 export const EXTENDED_PAYLOAD_LENGTH = 65;
 export const ASCII_PACKET_START = 0x24;
 export const ASCII_LINE_FEED = 0x0a;
+
+const RAD_TO_DEG = 180 / Math.PI;
 
 export function crc16CcittFalse(bytes) {
   let crc = 0xffff;
@@ -47,6 +51,11 @@ function parseFiniteInt(value, fallback = 0) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function parseOptionalFloat(value) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function isDecimalByteField(value) {
   const text = String(value ?? "").trim();
   if (!/^\d{1,3}$/.test(text)) {
@@ -55,15 +64,6 @@ function isDecimalByteField(value) {
 
   const parsed = Number.parseInt(text, 10);
   return parsed >= 0 && parsed <= 255;
-}
-
-function parseOptionalFloat(value) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function readInt8(byte) {
-  return byte > 127 ? byte - 256 : byte;
 }
 
 function normalizeServoLabel(label) {
@@ -76,8 +76,7 @@ function normalizeServoLabel(label) {
 }
 
 function parseServoFromNamedFields(fields) {
-  const finsDeg = [0, 0, 0, 0];
-  const found = [false, false, false, false];
+  const finsDeg = [null, null, null, null];
 
   for (const field of fields) {
     const match = String(field).match(/^\s*([A-Za-z0-9_ -]+)\s*[:=]\s*(-?\d+(?:\.\d+)?)\s*$/);
@@ -89,19 +88,10 @@ function parseServoFromNamedFields(fields) {
     const value = parseOptionalFloat(match[2]);
     if (index >= 0 && value !== null) {
       finsDeg[index] = value;
-      found[index] = true;
     }
   }
 
-  return found.some(Boolean)
-    ? {
-      aDeg: finsDeg[0],
-      bDeg: finsDeg[1],
-      cDeg: finsDeg[2],
-      dDeg: finsDeg[3],
-      finsDeg
-    }
-    : null;
+  return finsDeg.some((value) => value !== null) ? { finsDeg } : null;
 }
 
 function parseServoFromNumericTail(fields) {
@@ -114,25 +104,16 @@ function parseServoFromNumericTail(fields) {
     return null;
   }
 
-  return {
-    aDeg: values[0],
-    bDeg: values[1],
-    cDeg: values[2],
-    dDeg: values[3],
-    finsDeg: values
-  };
+  return { finsDeg: values };
 }
 
 function parseServoFromAsciiFields(fields) {
   return parseServoFromNamedFields(fields) ?? parseServoFromNumericTail(fields);
 }
 
-function normalizeFirmwareMode(modeText) {
-  const mode = String(modeText ?? "").trim().toUpperCase();
-  if (mode === "BALANCED" || mode === "DENGEDE") return "BALANCED";
-  if (mode === "RECOVERING" || mode === "ACQUIRING" || mode === "DEGRADED") return mode;
-  if (mode === "FAILURE" || mode === "ERROR" || mode === "FAULT") return "FAILURE";
-  return mode.length > 0 ? mode : "ACQUIRING";
+function parseFirmwareMode(modeText) {
+  const mode = String(modeText ?? "").trim();
+  return mode.length > 0 ? mode : null;
 }
 
 function parseAsciiChecksum(lineBytes, starIndex) {
@@ -167,6 +148,7 @@ function parseRtosFusionLine(lineBytes) {
     return null;
   }
 
+  const mode = parseFirmwareMode(fields[16]);
   const servo = parseServoFromAsciiFields(fields);
   const hasPressureBytes = fields.length >= 24 && fields.slice(20, 24).every(isDecimalByteField);
   const pressureHpa = hasPressureBytes
@@ -181,6 +163,7 @@ function parseRtosFusionLine(lineBytes) {
   return {
     type: "fusion",
     packetFormat: "rtosfus-ascii",
+    packetLabel: "RTOSFUS",
     messageId: "RTOSFUS",
     sequence: null,
     timestampMs: parseFiniteInt(fields[1], 0),
@@ -197,7 +180,7 @@ function parseRtosFusionLine(lineBytes) {
     temperatureC: parseFiniteFloat(fields[15], 0),
     pressureHpa,
     pressurePa: pressureHpa === null ? null : pressureHpa * 100.0,
-    altitudeM: parseFiniteFloat(fields[14], 0),
+    altitudeM: parseOptionalFloat(fields[14]),
     fixType: fields.length > 24 ? parseFiniteInt(fields[24], 0) : 0,
     attitudeDeg: {
       rollDeg: parseFiniteFloat(fields[4], 0),
@@ -205,18 +188,18 @@ function parseRtosFusionLine(lineBytes) {
       yawDeg: parseFiniteFloat(fields[6], 0)
     },
     servo,
-    mode: normalizeFirmwareMode(fields[16]),
-    firmwareMode: String(fields[16] ?? ""),
+    mode,
     rawFields: fields
   };
 }
 
-function parseImuFrame(frame) {
+function parseLegacyImuFrame(frame) {
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
   return {
     type: "imu",
     packetFormat: "legacy-imu",
-    messageId: MSG_ID_IMU,
+    packetLabel: "IMU 0x10",
+    messageId: MSG_ID_LEGACY_IMU,
     sequence: frame[3],
     timestampMs: view.getUint32(4, true),
     accel: {
@@ -233,20 +216,73 @@ function parseImuFrame(frame) {
   };
 }
 
+function parseVehicleStateFrame(frame) {
+  const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
+  return {
+    type: "imu-vehicle-state",
+    packetFormat: "agah-imu-vehicle-state",
+    packetLabel: "STATE 0x12",
+    messageId: MSG_ID_IMU_VEHICLE_STATE,
+    sequence: frame[3],
+    timestampMs: view.getUint32(4, true),
+    accel: {
+      x: readFloat32Le(view, 8),
+      y: readFloat32Le(view, 12),
+      z: readFloat32Le(view, 16)
+    },
+    gyro: {
+      x: readFloat32Le(view, 20),
+      y: readFloat32Le(view, 24),
+      z: readFloat32Le(view, 28)
+    },
+    temperatureC: readFloat32Le(view, 32),
+    attitudeDeg: {
+      rollDeg: readFloat32Le(view, 36) * RAD_TO_DEG,
+      pitchDeg: readFloat32Le(view, 40) * RAD_TO_DEG,
+      yawDeg: readFloat32Le(view, 44) * RAD_TO_DEG
+    },
+    attitudeRateRadS: {
+      roll: readFloat32Le(view, 48),
+      pitch: readFloat32Le(view, 52),
+      yaw: readFloat32Le(view, 56)
+    },
+    isEstimated: frame[60] !== 0
+  };
+}
+
+function parseCalibrationFrame(frame) {
+  const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
+  return {
+    type: "imu-calibration",
+    packetFormat: "imu-calibration",
+    packetLabel: "CAL 0x81",
+    messageId: MSG_ID_IMU_CALIBRATION,
+    sequence: frame[3],
+    timestampMs: view.getUint32(4, true),
+    calibration: {
+      accelBias: {
+        x: readFloat32Le(view, 8),
+        y: readFloat32Le(view, 12),
+        z: readFloat32Le(view, 16)
+      },
+      gyroBias: {
+        x: readFloat32Le(view, 20),
+        y: readFloat32Le(view, 24),
+        z: readFloat32Le(view, 28)
+      },
+      timestampMs: view.getUint32(32, true),
+      updateCounter: view.getUint32(36, true),
+      isValid: frame[40] !== 0
+    }
+  };
+}
+
 function parseExtendedImuFrame(frame) {
   const view = new DataView(frame.buffer, frame.byteOffset, frame.byteLength);
-  const reservedServoBytes = [frame[65], frame[66], frame[67], frame[68]];
-  const servo = {
-    aDeg: readInt8(reservedServoBytes[0]),
-    bDeg: readInt8(reservedServoBytes[1]),
-    cDeg: readInt8(reservedServoBytes[2]),
-    dDeg: readInt8(reservedServoBytes[3]),
-    finsDeg: reservedServoBytes.map(readInt8)
-  };
-
   return {
     type: "imu",
     packetFormat: "extended-imu-sensors",
+    packetLabel: "EXT 0x10",
     messageId: frame[2],
     payloadLength: frame[3],
     sequence: null,
@@ -274,7 +310,6 @@ function parseExtendedImuFrame(frame) {
     gnssAltitudeM: readFloat32Le(view, 60),
     altitudeM: readFloat32Le(view, 60),
     fixType: frame[64],
-    servo,
     reserved: {
       byte65: frame[65],
       byte66: frame[66],
@@ -368,8 +403,12 @@ export class TelemetryParser {
 
       if (this.isExtendedFrame(frame)) {
         frames.push(parseExtendedImuFrame(frame));
-      } else if (frame[2] === MSG_ID_IMU) {
-        frames.push(parseImuFrame(frame));
+      } else if (frame[2] === MSG_ID_IMU_VEHICLE_STATE) {
+        frames.push(parseVehicleStateFrame(frame));
+      } else if (frame[2] === MSG_ID_IMU_CALIBRATION) {
+        frames.push(parseCalibrationFrame(frame));
+      } else if (frame[2] === MSG_ID_LEGACY_IMU) {
+        frames.push(parseLegacyImuFrame(frame));
       }
     }
 
@@ -404,43 +443,30 @@ export class TelemetryParser {
       frame.length === EXTENDED_FRAME_LENGTH &&
       frame[0] === EXTENDED_SYNC_0 &&
       frame[1] === EXTENDED_SYNC_1 &&
-      frame[2] === MSG_ID_IMU &&
+      frame[2] === MSG_ID_LEGACY_IMU &&
       frame[3] === EXTENDED_PAYLOAD_LENGTH
     );
   }
 
   frameLengthForCurrentHeader() {
-    if (this.buffer[0] === LEGACY_SYNC_0 && this.buffer[1] === LEGACY_SYNC_1 && this.buffer[2] === MSG_ID_IMU) {
-      return IMU_FRAME_LENGTH;
+    if (this.buffer[0] === LEGACY_SYNC_0 && this.buffer[1] === LEGACY_SYNC_1) {
+      if (this.buffer[2] === MSG_ID_IMU_VEHICLE_STATE) {
+        return VEHICLE_STATE_FRAME_LENGTH;
+      }
+      if (this.buffer[2] === MSG_ID_IMU_CALIBRATION) {
+        return CALIBRATION_FRAME_LENGTH;
+      }
+      if (this.buffer[2] === MSG_ID_LEGACY_IMU) {
+        return LEGACY_IMU_FRAME_LENGTH;
+      }
     }
     if (this.buffer.length >= 4 &&
         this.buffer[0] === EXTENDED_SYNC_0 &&
         this.buffer[1] === EXTENDED_SYNC_1 &&
-        this.buffer[2] === MSG_ID_IMU &&
+        this.buffer[2] === MSG_ID_LEGACY_IMU &&
         this.buffer[3] === EXTENDED_PAYLOAD_LENGTH) {
       return EXTENDED_FRAME_LENGTH;
     }
     return 0;
   }
-}
-
-export function packImuFrame(sample, sequence) {
-  const frame = new Uint8Array(IMU_FRAME_LENGTH);
-  const view = new DataView(frame.buffer);
-  frame[0] = TELEMETRY_SYNC_0;
-  frame[1] = TELEMETRY_SYNC_1;
-  frame[2] = MSG_ID_IMU;
-  frame[3] = sequence & 0xff;
-  view.setUint32(4, sample.timestampMs >>> 0, true);
-  view.setFloat32(8, sample.accel.x, true);
-  view.setFloat32(12, sample.accel.y, true);
-  view.setFloat32(16, sample.accel.z, true);
-  view.setFloat32(20, sample.gyro.x, true);
-  view.setFloat32(24, sample.gyro.y, true);
-  view.setFloat32(28, sample.gyro.z, true);
-  view.setFloat32(32, sample.temperatureC, true);
-  const crc = crc16CcittFalse(frame.slice(0, IMU_FRAME_LENGTH - 2));
-  frame[36] = crc & 0xff;
-  frame[37] = (crc >> 8) & 0xff;
-  return frame;
 }

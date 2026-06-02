@@ -1,22 +1,14 @@
-import { createIcons, Activity, Gauge, LineChart, Play, Radio, RotateCcw, SlidersHorizontal, Usb, Waves, Wifi } from "lucide";
+import { createIcons, Activity, Gauge, LineChart, Radio, RotateCcw, SlidersHorizontal, Usb, Waves, Wifi } from "lucide";
 import "./styles.css";
 import { VehicleScene } from "./scene.js";
 import { StripChart } from "./charts.js";
-import { TelemetryParser, packImuFrame } from "./telemetryProtocol.js";
-import {
-  attitudeSnapshot,
-  createEstimator,
-  makeSimulatedImuSample,
-  resetEstimator,
-  updateEstimatorFromImu
-} from "./attitudeEstimator.js";
+import { TelemetryParser } from "./telemetryProtocol.js";
 
 createIcons({
   icons: {
     Activity,
     Gauge,
     LineChart,
-    Play,
     Radio,
     RotateCcw,
     SlidersHorizontal,
@@ -27,7 +19,6 @@ createIcons({
 });
 
 const parser = new TelemetryParser();
-const estimator = createEstimator();
 const scene = new VehicleScene(document.getElementById("vehicleCanvas"));
 const attitudeChart = new StripChart(document.getElementById("attitudeChart"), [
   { key: "roll", color: "#eb6f55" },
@@ -44,11 +35,10 @@ const ui = {
   connectButton: document.getElementById("connectSerialButton"),
   wifiButton: document.getElementById("connectWifiButton"),
   wifiUrlInput: document.getElementById("wifiUrlInput"),
-  simButton: document.getElementById("toggleSimButton"),
   resetButton: document.getElementById("resetViewButton"),
   modePill: document.getElementById("modePill"),
   linkPill: document.getElementById("linkPill"),
-  estimatorBadge: document.getElementById("estimatorBadge"),
+  sourceBadge: document.getElementById("sourceBadge"),
   modeText: document.getElementById("modeText"),
   roll: document.getElementById("rollValue"),
   pitch: document.getElementById("pitchValue"),
@@ -62,7 +52,8 @@ const ui = {
   gyroX: document.getElementById("gyroXValue"),
   gyroY: document.getElementById("gyroYValue"),
   gyroZ: document.getElementById("gyroZValue"),
-  temp: document.getElementById("tempValue"),
+  imuTemp: document.getElementById("imuTempValue"),
+  baroTemp: document.getElementById("baroTempValue"),
   pressure: document.getElementById("pressureValue"),
   altitude: document.getElementById("altitudeValue"),
   servoA: document.getElementById("servoAValue"),
@@ -85,23 +76,41 @@ let serialReader = null;
 let wifiSocket = null;
 let isSerialRunning = false;
 let isWifiRunning = false;
-let isSimulationRunning = false;
-let simTimer = null;
 let frameCount = 0;
 let lastPacketAt = 0;
-let latestSourceLabel = "IMU estimate";
-let latestSnapshot = attitudeSnapshot(estimator, {
-  timestampMs: 0,
-  accel: { x: 0, y: 0, z: 9.80665 },
-  gyro: { x: 0, y: 0, z: 0 },
-  temperatureC: 0
-});
+let latestSourceLabel = "No telemetry";
+let latestSnapshot = makeInitialSnapshot();
+
+function makeInitialSnapshot() {
+  return {
+    packetFormat: "none",
+    packetLabel: "--",
+    timestampMs: 0,
+    mode: "ACQUIRING",
+    rollDeg: 0,
+    pitchDeg: 0,
+    yawDeg: 0,
+    tiltDeg: 0,
+    accel: { x: 0, y: 0, z: 0 },
+    gyro: { x: 0, y: 0, z: 0 },
+    imuTemperatureC: 0,
+    barometerTemperatureC: 0,
+    pressurePa: null,
+    altitudeM: null,
+    servosDeg: [0, 0, 0, 0]
+  };
+}
 
 function fmt(value, digits = 1) {
   return Number.isFinite(value) ? value.toFixed(digits) : "--";
 }
 
-function normalizeServoAngles(source) {
+function displayModeText(mode) {
+  const text = String(mode ?? "ACQUIRING");
+  return text.length > 0 ? text.charAt(0).toUpperCase() + text.slice(1).toLowerCase() : "Acquiring";
+}
+
+function readServoAngles(source) {
   if (Array.isArray(source?.servosDeg) && source.servosDeg.length >= 4) {
     return source.servosDeg.slice(0, 4).map((value) => Number.isFinite(value) ? value : 0);
   }
@@ -110,18 +119,13 @@ function normalizeServoAngles(source) {
     return source.finsDeg.slice(0, 4).map((value) => Number.isFinite(value) ? value : 0);
   }
 
-  const servoA = Number.isFinite(source?.servoA) ? source.servoA : Number.isFinite(source?.aDeg) ? source.aDeg : 0;
-  const servoB = Number.isFinite(source?.servoB) ? source.servoB : Number.isFinite(source?.bDeg) ? source.bDeg : 0;
-  const servoC = Number.isFinite(source?.servoC) ? source.servoC : Number.isFinite(source?.cDeg) ? source.cDeg : -servoA;
-  const servoD = Number.isFinite(source?.servoD) ? source.servoD : Number.isFinite(source?.dDeg) ? source.dDeg : -servoB;
-
-  return [servoA, servoB, servoC, servoD];
+  return null;
 }
 
 function setModeVisual(mode) {
-  ui.modePill.dataset.mode = mode.toLowerCase();
-  ui.modePill.textContent = mode;
-  ui.modeText.textContent = mode.charAt(0) + mode.slice(1).toLowerCase();
+  ui.modePill.dataset.mode = String(mode ?? "ACQUIRING").toLowerCase();
+  ui.modePill.textContent = String(mode ?? "ACQUIRING").toUpperCase();
+  ui.modeText.textContent = displayModeText(mode);
 }
 
 function setLinkVisual(isLive) {
@@ -130,32 +134,28 @@ function setLinkVisual(isLive) {
 }
 
 function updateUi(snapshot, sourceLabel) {
-  const linkLive = ((lastPacketAt > 0) && ((performance.now() - lastPacketAt) < 1600)) || isSimulationRunning;
-  const mode = linkLive ? snapshot.mode : "ACQUIRING";
+  const linkLive = (lastPacketAt > 0) && ((performance.now() - lastPacketAt) < 1600);
+  const servosDeg = Array.isArray(snapshot.servosDeg) ? snapshot.servosDeg : [0, 0, 0, 0];
 
-  setModeVisual(mode);
+  setModeVisual(snapshot.mode);
   setLinkVisual(linkLive);
-  ui.estimatorBadge.textContent = sourceLabel;
+  ui.sourceBadge.textContent = sourceLabel;
   ui.roll.textContent = `${fmt(snapshot.rollDeg)} deg`;
   ui.pitch.textContent = `${fmt(snapshot.pitchDeg)} deg`;
   ui.yaw.textContent = `${fmt(snapshot.yawDeg)} deg`;
   ui.tilt.textContent = `${fmt(snapshot.tiltDeg)} deg`;
   ui.frames.textContent = String(frameCount);
-  ui.packet.textContent = latestSnapshot.packetFormat === "extended-imu-sensors"
-    ? "EXT 0x10"
-    : latestSnapshot.packetFormat === "rtosfus-ascii"
-      ? "RTOSFUS"
-      : "IMU 0x10";
+  ui.packet.textContent = snapshot.packetLabel ?? "--";
   ui.accelX.textContent = `${fmt(snapshot.accel.x, 2)} m/s2`;
   ui.accelY.textContent = `${fmt(snapshot.accel.y, 2)} m/s2`;
   ui.accelZ.textContent = `${fmt(snapshot.accel.z, 2)} m/s2`;
   ui.gyroX.textContent = `${fmt(snapshot.gyro.x, 2)} rad/s`;
   ui.gyroY.textContent = `${fmt(snapshot.gyro.y, 2)} rad/s`;
   ui.gyroZ.textContent = `${fmt(snapshot.gyro.z, 2)} rad/s`;
-  ui.temp.textContent = `${fmt(snapshot.temperatureC, 2)} C`;
+  ui.imuTemp.textContent = `${fmt(snapshot.imuTemperatureC, 2)} C`;
+  ui.baroTemp.textContent = `${fmt(snapshot.barometerTemperatureC, 2)} C`;
   ui.pressure.textContent = snapshot.pressurePa === null ? "-- Pa" : `${fmt(snapshot.pressurePa, 0)} Pa`;
   ui.altitude.textContent = snapshot.altitudeM === null ? "-- m" : `${fmt(snapshot.altitudeM, 2)} m`;
-  const servosDeg = normalizeServoAngles(snapshot);
   ui.servoA.value = servosDeg[0];
   ui.servoB.value = servosDeg[1];
   ui.servoC.value = servosDeg[2];
@@ -166,48 +166,74 @@ function updateUi(snapshot, sourceLabel) {
   ui.servoDText.textContent = `${fmt(servosDeg[3])} deg`;
 }
 
-function ingestSample(sample, sourceLabel) {
-  latestSnapshot = updateEstimatorFromImu(estimator, sample);
-  latestSnapshot.packetFormat = sample.packetFormat;
-  if (sample.attitudeDeg) {
-    latestSnapshot.rollDeg = sample.attitudeDeg.rollDeg;
-    latestSnapshot.pitchDeg = sample.attitudeDeg.pitchDeg;
-    latestSnapshot.yawDeg = sample.attitudeDeg.yawDeg;
-    latestSnapshot.tiltDeg = Math.sqrt(
-      (latestSnapshot.rollDeg * latestSnapshot.rollDeg) +
-      (latestSnapshot.pitchDeg * latestSnapshot.pitchDeg)
-    );
+function ingestFrame(frame, sourceLabel) {
+  latestSnapshot.packetFormat = frame.packetFormat ?? latestSnapshot.packetFormat;
+  latestSnapshot.packetLabel = frame.packetLabel ?? latestSnapshot.packetLabel;
+  if (Number.isFinite(frame.timestampMs)) {
+    latestSnapshot.timestampMs = frame.timestampMs;
   }
-  if (sample.servo) {
-    latestSnapshot.servosDeg = normalizeServoAngles(sample.servo);
-    latestSnapshot.servoA = latestSnapshot.servosDeg[0];
-    latestSnapshot.servoB = latestSnapshot.servosDeg[1];
-    latestSnapshot.servoC = latestSnapshot.servosDeg[2];
-    latestSnapshot.servoD = latestSnapshot.servosDeg[3];
+  if (frame.accel) {
+    latestSnapshot.accel = { ...latestSnapshot.accel, ...frame.accel };
   }
-  if (sample.mode) {
-    latestSnapshot.mode = sample.mode;
+  if (frame.gyro) {
+    latestSnapshot.gyro = { ...latestSnapshot.gyro, ...frame.gyro };
   }
+  if (Number.isFinite(frame.temperatureC)) {
+    latestSnapshot.imuTemperatureC = frame.temperatureC;
+  }
+  if (Number.isFinite(frame.barometerTemperatureC)) {
+    latestSnapshot.barometerTemperatureC = frame.barometerTemperatureC;
+  }
+  if (Number.isFinite(frame.pressurePa)) {
+    latestSnapshot.pressurePa = frame.pressurePa;
+  }
+  if (Number.isFinite(frame.altitudeM)) {
+    latestSnapshot.altitudeM = frame.altitudeM;
+  }
+  if (frame.attitudeDeg) {
+    latestSnapshot.rollDeg = Number.isFinite(frame.attitudeDeg.rollDeg) ? frame.attitudeDeg.rollDeg : latestSnapshot.rollDeg;
+    latestSnapshot.pitchDeg = Number.isFinite(frame.attitudeDeg.pitchDeg) ? frame.attitudeDeg.pitchDeg : latestSnapshot.pitchDeg;
+    latestSnapshot.yawDeg = Number.isFinite(frame.attitudeDeg.yawDeg) ? frame.attitudeDeg.yawDeg : latestSnapshot.yawDeg;
+  }
+  if (Number.isFinite(frame.tiltDeg)) {
+    latestSnapshot.tiltDeg = frame.tiltDeg;
+  }
+  if (frame.mode !== null && frame.mode !== undefined && String(frame.mode).trim().length > 0) {
+    latestSnapshot.mode = String(frame.mode).trim();
+  }
+
+  const servosDeg = readServoAngles(frame.servo);
+  if (servosDeg !== null) {
+    latestSnapshot.servosDeg = servosDeg;
+  }
+
   latestSourceLabel = sourceLabel;
   frameCount += 1;
   lastPacketAt = performance.now();
   scene.update(latestSnapshot);
-  attitudeChart.push(sample.timestampMs, {
-    roll: latestSnapshot.rollDeg,
-    pitch: latestSnapshot.pitchDeg,
-    yaw: latestSnapshot.yawDeg
-  });
-  imuChart.push(sample.timestampMs, {
-    ax: sample.accel.x,
-    ay: sample.accel.y,
-    az: sample.accel.z
-  });
+
+  if (frame.attitudeDeg) {
+    attitudeChart.push(latestSnapshot.timestampMs, {
+      roll: latestSnapshot.rollDeg,
+      pitch: latestSnapshot.pitchDeg,
+      yaw: latestSnapshot.yawDeg
+    });
+  }
+
+  if (frame.accel) {
+    imuChart.push(latestSnapshot.timestampMs, {
+      ax: latestSnapshot.accel.x,
+      ay: latestSnapshot.accel.y,
+      az: latestSnapshot.accel.z
+    });
+  }
+
   updateUi(latestSnapshot, sourceLabel);
 }
 
 async function connectSerial() {
   if (!("serial" in navigator)) {
-    ui.estimatorBadge.textContent = "Chrome Web Serial required";
+    ui.sourceBadge.textContent = "Chrome Web Serial required";
     return;
   }
 
@@ -248,38 +274,38 @@ function connectWifi() {
 
   const url = ui.wifiUrlInput.value.trim();
   if (url.length === 0) {
-    ui.estimatorBadge.textContent = "WiFi URL missing";
+    ui.sourceBadge.textContent = "WiFi URL missing";
     return;
   }
 
   wifiSocket = new WebSocket(url);
   wifiSocket.binaryType = "arraybuffer";
-  ui.estimatorBadge.textContent = "WiFi connecting";
+  ui.sourceBadge.textContent = "WiFi connecting";
 
   wifiSocket.addEventListener("open", () => {
     isWifiRunning = true;
     ui.wifiButton.classList.add("armed");
     ui.wifiButton.querySelector("span").textContent = "Stop";
-    ui.estimatorBadge.textContent = "WiFi telemetry";
+    ui.sourceBadge.textContent = "WiFi telemetry";
   });
 
   wifiSocket.addEventListener("message", (event) => {
     if (event.data instanceof ArrayBuffer) {
-      parser.push(new Uint8Array(event.data)).forEach((frame) => ingestSample(frame, "WiFi telemetry"));
+      parser.push(new Uint8Array(event.data)).forEach((frame) => ingestFrame(frame, "WiFi telemetry"));
     } else if (event.data instanceof Blob) {
       event.data.arrayBuffer().then((buffer) => {
-        parser.push(new Uint8Array(buffer)).forEach((frame) => ingestSample(frame, "WiFi telemetry"));
+        parser.push(new Uint8Array(buffer)).forEach((frame) => ingestFrame(frame, "WiFi telemetry"));
       });
     }
   });
 
   wifiSocket.addEventListener("close", () => {
     stopWifi(false);
-    ui.estimatorBadge.textContent = "WiFi disconnected";
+    ui.sourceBadge.textContent = "WiFi disconnected";
   });
 
   wifiSocket.addEventListener("error", () => {
-    ui.estimatorBadge.textContent = "WiFi connection failed";
+    ui.sourceBadge.textContent = "WiFi connection failed";
   });
 }
 
@@ -300,11 +326,11 @@ async function readSerialLoop() {
       const { value, done } = await serialReader.read();
       if (done) break;
       if (value) {
-        parser.push(value).forEach((frame) => ingestSample(frame, "Live IMU estimate"));
+        parser.push(value).forEach((frame) => ingestFrame(frame, "Serial telemetry"));
       }
     }
   } catch (error) {
-    ui.estimatorBadge.textContent = "Serial read stopped";
+    ui.sourceBadge.textContent = "Serial read stopped";
   } finally {
     isSerialRunning = false;
     ui.connectButton.classList.remove("armed");
@@ -312,56 +338,24 @@ async function readSerialLoop() {
   }
 }
 
-function toggleSimulation() {
-  if (isSimulationRunning) {
-    clearInterval(simTimer);
-    simTimer = null;
-    isSimulationRunning = false;
-    ui.simButton.classList.remove("armed");
-    ui.simButton.querySelector("span").textContent = "Sim";
-    return;
-  }
-
-  const startedAt = performance.now();
-  let sequence = 0;
-  isSimulationRunning = true;
-  ui.simButton.classList.add("armed");
-  ui.simButton.querySelector("span").textContent = "Stop";
-  simTimer = setInterval(() => {
-    const sample = makeSimulatedImuSample(performance.now() - startedAt);
-    const frame = packImuFrame(sample, sequence);
-    sequence = (sequence + 1) & 0xff;
-    parser.push(frame).forEach((packet) => {
-      packet.pressurePa = sample.pressurePa;
-      packet.altitudeM = sample.altitudeM;
-      ingestSample(packet, "Simulation");
-    });
-  }, 50);
-}
-
 function resetDashboard() {
   parser.reset();
-  resetEstimator(estimator);
   frameCount = 0;
   lastPacketAt = 0;
-  latestSourceLabel = "IMU estimate";
-  latestSnapshot = attitudeSnapshot(estimator, {
-    timestampMs: 0,
-    accel: { x: 0, y: 0, z: 9.80665 },
-    gyro: { x: 0, y: 0, z: 0 },
-    temperatureC: 0
-  });
+  latestSourceLabel = "No telemetry";
+  latestSnapshot = makeInitialSnapshot();
+  attitudeChart.clear();
+  imuChart.clear();
   scene.update(latestSnapshot);
-  updateUi(latestSnapshot, "IMU estimate");
+  updateUi(latestSnapshot, latestSourceLabel);
 }
 
 ui.connectButton.addEventListener("click", () => {
   connectSerial().catch(() => {
-    ui.estimatorBadge.textContent = "Serial connection failed";
+    ui.sourceBadge.textContent = "Serial connection failed";
   });
 });
 ui.wifiButton.addEventListener("click", connectWifi);
-ui.simButton.addEventListener("click", toggleSimulation);
 ui.resetButton.addEventListener("click", resetDashboard);
 
 const initialConnectionMode = new URLSearchParams(window.location.search).get("connect");

@@ -1,12 +1,36 @@
 # RTOS Flight Telemetry Dashboard
 
-This dashboard is a jury-facing live telemetry tool for the STM32F411 RTOS flight-controller project.
+This dashboard is a jury-facing live telemetry tool for the STM32 RTOS flight-controller project.
+
+## Runtime Principle
+
+The dashboard only visualizes fields that arrive in telemetry packets. It does not estimate attitude, infer flight mode, synthesize servo commands, or run dummy simulation data.
+
+If a packet does not contain a field, the corresponding UI value stays at its initial value. This keeps the PC-side tool aligned with the firmware architecture: Sensor, Navigation, Flight-Control, Actuator, BMP180, and Telemetry tasks own the data; the dashboard only parses and renders it.
 
 ## What It Reads Today
 
-The dashboard accepts two binary formats:
+### Agah IMU and Vehicle State Frame
 
-### Current Repository IMU Frame
+- Sync: `0xA5 0x5A`
+- Message id: `0x12`
+- Length: 63 bytes
+- Payload: timestamp, accel XYZ, gyro XYZ, IMU temperature, roll/pitch/yaw, roll-rate/pitch-rate/yaw-rate, estimator-valid flag
+- CRC: CRC16/CCITT-FALSE, little-endian
+
+This is the primary firmware packet currently used by Agah's `telemetry_task.c`.
+
+### Agah IMU Calibration Frame
+
+- Sync: `0xA5 0x5A`
+- Message id: `0x81`
+- Length: 43 bytes
+- Payload: timestamp, accelerometer bias XYZ, gyroscope bias XYZ, calibration timestamp, update counter, validity flag
+- CRC: CRC16/CCITT-FALSE, little-endian
+
+This frame is parsed for protocol compatibility. It is not used to fabricate missing dashboard values.
+
+### Legacy Akif IMU Frame
 
 - Sync: `0xA5 0x5A`
 - Message id: `0x10`
@@ -14,7 +38,9 @@ The dashboard accepts two binary formats:
 - Payload: sequence, timestamp, accel XYZ, gyro XYZ, IMU temperature
 - CRC: CRC16/CCITT-FALSE, little-endian
 
-### Mentor Extended IMU & Sensor Frame
+This parser path is kept so older local test firmware can still be inspected. Because this packet has no fused attitude, mode, servo, or BMP180 data, those UI fields remain at their initial values.
+
+### Extended Sensor Frame
 
 - Sync: `0xAA 0x55`
 - Message id: `0x10`
@@ -23,7 +49,11 @@ The dashboard accepts two binary formats:
 - Payload: timestamp, accel XYZ, gyro XYZ, IMU temperature, magnetometer XYZ, barometer pressure, GNSS coordinates, GNSS altitude, fix type
 - CRC: CRC16/CCITT-FALSE, little-endian
 
-The dashboard estimates roll and pitch from accelerometer plus gyro using a small complementary filter. Yaw is gyro-integrated because the current packet does not yet include magnetometer or fused yaw.
+This parser path is kept for mentor packet experiments. Only explicit fields in the packet are shown.
+
+### ASCII RTOSFUS Frame
+
+ASCII `RTOSFUS,...` lines are supported for temporary wired testing. The parser still follows the same rule: missing fields are not guessed.
 
 ## Run
 
@@ -46,9 +76,9 @@ Use this when STM32 is connected to the same computer that runs the dashboard.
 3. Press `Serial`.
 4. Select the STM32 virtual COM port.
 
-This path uses Chrome Web Serial and reads the same binary packets produced by `telemetry_task.c`.
+This path uses Chrome Web Serial and reads the binary packets produced by firmware telemetry.
 
-### 2. Wired ESP32 Simulation Without ESP32
+### 2. Wired Serial-to-WebSocket Relay
 
 Use this while ESP32 is not available. It keeps the dashboard side close to the final WiFi architecture:
 
@@ -98,18 +128,13 @@ npm run serial:bridge -- --port=/dev/tty.usbmodemXXXX --host=0.0.0.0
 
 This is a useful rehearsal for the ESP32 path because the dashboard is accessed over the network instead of only localhost.
 
-## Why This Is Separate From Firmware
-
-The dashboard is intentionally placed under `Tools/TelemetryDashboard` so the embedded firmware remains deterministic and small. Firmware only sends compact binary packets; visualization, parsing, history buffers, and 3D rendering stay on the PC side.
-
 ## Firmware Data Needed Next
 
-For the final demo, the dashboard can become more accurate if firmware later adds these fields:
+For the final demo, firmware telemetry can later add these fields:
 
-- Fused roll, pitch, yaw in degrees.
-- Balance mode: acquiring, balanced, recovering, failure.
-- Servo fin A/B command angles.
+- Flight mode: acquiring, balanced, recovering, failure.
+- Four servo fin command angles.
 - BMP180 pressure, altitude, and barometer temperature.
 - Packet health counters or fault bits.
 
-Until those fields exist, the dashboard derives mode and servo demand from the live IMU stream and marks the attitude as an `IMU estimate`.
+Until those fields exist, the dashboard keeps their initial values.

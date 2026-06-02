@@ -19,6 +19,11 @@ export class StripChart {
     }
   }
 
+  clear() {
+    this.samples = [];
+    this.draw();
+  }
+
   resize() {
     const rect = this.canvas.getBoundingClientRect();
     this.canvas.width = Math.max(1, Math.floor(rect.width * this.pixelRatio));

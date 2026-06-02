@@ -27,11 +27,7 @@
               <span>WiFi</span>
             </button>
           </div>
-          <button class="icon-button" id="toggleSimButton" type="button">
-            <i data-lucide="play"></i>
-            <span>Sim</span>
-          </button>
-          <button class="icon-button" id="resetViewButton" type="button" title="Reset estimator">
+          <button class="icon-button" id="resetViewButton" type="button" title="Reset view">
             <i data-lucide="rotate-ccw"></i>
           </button>
         </div>
@@ -58,8 +54,8 @@
               <strong id="yawValue">0.0 deg</strong>
             </div>
           </div>
-          <div class="scene-overlay bottom-right estimator-badge" id="estimatorBadge">
-            IMU estimate
+          <div class="scene-overlay bottom-right source-badge" id="sourceBadge">
+            No telemetry
           </div>
         </section>
 
@@ -84,7 +80,7 @@
               </div>
               <div>
                 <span>Packet</span>
-                <strong id="packetTypeValue">IMU 0x10</strong>
+                <strong id="packetTypeValue">--</strong>
               </div>
             </div>
           </section>
@@ -101,6 +97,7 @@
               <div><span>Gyro X</span><strong id="gyroXValue">0.00 rad/s</strong></div>
               <div><span>Gyro Y</span><strong id="gyroYValue">0.00 rad/s</strong></div>
               <div><span>Gyro Z</span><strong id="gyroZValue">0.00 rad/s</strong></div>
+              <div><span>IMU Temp</span><strong id="imuTempValue">0.00 C</strong></div>
             </div>
           </section>
 
@@ -110,7 +107,7 @@
               <h2>Barometer</h2>
             </div>
             <div class="metric-list compact">
-              <div><span>Temperature</span><strong id="tempValue">0.00 C</strong></div>
+              <div><span>BMP Temp</span><strong id="baroTempValue">0.00 C</strong></div>
               <div><span>Pressure</span><strong id="pressureValue">-- Pa</strong></div>
               <div><span>Altitude</span><strong id="altitudeValue">-- m</strong></div>
             </div>

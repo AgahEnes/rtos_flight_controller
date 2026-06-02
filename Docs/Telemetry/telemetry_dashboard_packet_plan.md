@@ -1,8 +1,32 @@
 # Telemetry Dashboard Packet Plan
 
-The current firmware sends only the IMU packet, which is enough for a first dashboard and demo simulation. For the final balance-platform presentation, add one extended state packet instead of overloading the IMU packet.
+The dashboard is a visualization endpoint only. It must not estimate attitude, infer flight mode, invent servo commands, or generate dummy telemetry. Every displayed value must come from a parsed firmware packet; if the packet does not contain a field, the UI keeps the initial value.
 
-## Current Repository Packet
+## Current Agah IMU and Vehicle State Packet
+
+| Field | Value |
+| --- | --- |
+| Sync | `0xA5 0x5A` |
+| Message id | `0x12` |
+| Length | 63 bytes |
+| Payload | timestamp, accel XYZ, gyro XYZ, IMU temperature, roll/pitch/yaw, roll-rate/pitch-rate/yaw-rate, estimator-valid flag |
+| CRC | CRC16/CCITT-FALSE over all bytes before CRC |
+
+The dashboard uses this packet as the primary live source for IMU and attitude visualization.
+
+## Current Agah IMU Calibration Packet
+
+| Field | Value |
+| --- | --- |
+| Sync | `0xA5 0x5A` |
+| Message id | `0x81` |
+| Length | 43 bytes |
+| Payload | timestamp, accelerometer bias XYZ, gyroscope bias XYZ, calibration timestamp, update counter, validity flag |
+| CRC | CRC16/CCITT-FALSE over all bytes before CRC |
+
+The dashboard parser accepts this frame for protocol compatibility. It does not use calibration frames to synthesize missing dashboard state.
+
+## Legacy Akif IMU Packet
 
 | Field | Value |
 | --- | --- |
@@ -12,9 +36,9 @@ The current firmware sends only the IMU packet, which is enough for a first dash
 | Payload | sequence, timestamp, accel XYZ, gyro XYZ, IMU temperature |
 | CRC | CRC16/CCITT-FALSE over all bytes before CRC |
 
-## Mentor Extended Sensor Packet
+This packet is kept for older local tests. It has no fused attitude, flight mode, servo, or BMP180 fields, so those UI values stay at their initial state.
 
-The mentor packet sketch uses this structure:
+## Mentor Extended Sensor Packet
 
 | Field | Value |
 | --- | --- |
@@ -25,36 +49,30 @@ The mentor packet sketch uses this structure:
 | Payload | timestamp, IMU, magnetometer, barometer, GNSS/fix data |
 | CRC | CRC16/CCITT-FALSE over bytes 0 through 68 |
 
-The dashboard parser supports this packet as `extended-imu-sensors`.
+The dashboard parser supports this packet as `extended-imu-sensors`. Only explicit fields are rendered.
 
-## Future State Packet
+## Firmware Data Needed Next
 
-| Field | Type | Unit |
+For the final balance-platform presentation, extend firmware telemetry with explicit fields for:
+
+| Field | Suggested type | Unit |
 | --- | --- | --- |
-| Sync | `uint8[2]` | `0xA5 0x5A` |
-| Message id | `uint8` | `0x20` |
-| Sequence | `uint8` | counter |
-| Timestamp | `uint32_le` | ms |
-| Mode | `uint8` | 0 acquiring, 1 balanced, 2 recovering, 3 failure |
+| Flight mode | `uint8` or enum-coded `uint8` | acquiring, balanced, recovering, failure |
 | Fault bits | `uint16_le` | bit field |
-| Roll | `float32_le` | degree |
-| Pitch | `float32_le` | degree |
-| Yaw | `float32_le` | degree |
-| Tilt | `float32_le` | degree |
 | Servo A | `float32_le` | degree |
 | Servo B | `float32_le` | degree |
-| Temperature IMU | `float32_le` | C |
-| Temperature BMP180 | `float32_le` | C |
-| Pressure | `float32_le` | Pa |
-| Altitude | `float32_le` | m |
-| CRC | `uint16_le` | CRC16/CCITT-FALSE |
+| Servo C | `float32_le` | degree |
+| Servo D | `float32_le` | degree |
+| BMP180 temperature | `float32_le` | C |
+| BMP180 pressure | `float32_le` | Pa |
+| BMP180 altitude | `float32_le` | m |
 
 ## Integration Shape
 
 1. Keep `App/Telemetry/telemetry_task.c` as the packet owner.
-2. Add a second pack helper beside `TelemetryTask_prvPackImu`.
-3. Read fused attitude and BMP180 topics from `global_data_space`.
-4. Send IMU packet at 100 ms and state packet at 100 ms, or state at 50 ms if UART budget allows.
-5. Keep UART packet generation out of sensor drivers.
+2. Read state, actuator, and BMP180 topics from `global_data_space`.
+3. Add fields to a firmware packet only after the corresponding producer task publishes real data.
+4. Keep UART packet generation out of sensor and actuator drivers.
+5. Update the dashboard parser only when the firmware packet layout changes.
 
-At 115200 baud, a 60-byte packet at 10 Hz is roughly 600 B/s before UART framing, so it is safe for this project.
+At 115200 baud, a compact state packet at 10 Hz is safe for this project, but final packet frequency should still be chosen by firmware timing analysis.
