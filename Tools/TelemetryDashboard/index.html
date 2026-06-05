@@ -59,6 +59,29 @@
           </div>
         </section>
 
+        <section class="altitude-stage" data-has-baro="false" aria-label="Barometric altitude scale">
+          <div class="altitude-header">
+            <span>Estimated Altitude</span>
+            <strong id="altitudeScaleValue">-- m</strong>
+          </div>
+          <div class="altitude-ruler" aria-hidden="true">
+            <div class="altitude-tick tick-3"><span>3 m</span></div>
+            <div class="altitude-tick tick-2"><span>2 m</span></div>
+            <div class="altitude-tick tick-1"><span>1 m</span></div>
+            <div class="altitude-tick tick-0"><span>0 m</span></div>
+            <div class="altitude-rocket-marker" id="altitudeRocketMarker">
+              <span class="altitude-rocket-nose"></span>
+              <span class="altitude-rocket-body"></span>
+              <span class="altitude-rocket-band band-top"></span>
+              <span class="altitude-rocket-band band-bottom"></span>
+              <span class="altitude-rocket-fin fin-left"></span>
+              <span class="altitude-rocket-fin fin-right"></span>
+              <span class="altitude-rocket-nozzle"></span>
+            </div>
+          </div>
+          <div class="altitude-status" id="altitudeStatusValue">No baro data</div>
+        </section>
+
         <aside class="right-rail" aria-label="Live telemetry">
           <section class="panel status-panel">
             <div class="panel-title">

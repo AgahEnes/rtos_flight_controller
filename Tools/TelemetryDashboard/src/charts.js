@@ -36,14 +36,14 @@ export class StripChart {
     const width = this.canvas.width;
     const height = this.canvas.height;
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = "#101417";
+    ctx.fillStyle = "#f8fbfc";
     ctx.fillRect(0, 0, width, height);
 
     const pad = 26 * this.pixelRatio;
     const plotWidth = Math.max(1, width - (pad * 2));
     const plotHeight = Math.max(1, height - (pad * 2));
 
-    ctx.strokeStyle = "rgba(210, 220, 220, 0.11)";
+    ctx.strokeStyle = "rgba(49, 78, 88, 0.16)";
     ctx.lineWidth = 1 * this.pixelRatio;
     for (let i = 0; i <= 4; i += 1) {
       const y = pad + (plotHeight * i / 4);
