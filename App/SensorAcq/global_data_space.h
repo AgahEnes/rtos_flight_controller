@@ -32,6 +32,8 @@ typedef struct
     float f32RollRateRadS;
     float f32PitchRateRadS;
     float f32YawRateRadS;
+    float f32AltitudeM;     /* Relative altitude above ground level, [m] */
+    float f32VelocityZMps;  /* Vertical velocity (positive up), [m/s] */
     uint32_t u32TimestampMs;
     bool bIsEstimated;
 } ts_TopicVehicleState;

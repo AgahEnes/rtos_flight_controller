@@ -291,6 +291,39 @@ static void Navigation_prvUpdateStuckCounter(ts_NavContext *psContext, const ts_
     psContext->u8HasLastRawImu = 1U;
 }
 
+static te_NavDataStatus Navigation_prvValidateBaroInput(const ts_NavContext *psContext,
+                                                        const ts_TopicBarometer *psNewBaro)
+{
+    float f32BaroDelta;
+
+    if ((psContext == NULL) || (psNewBaro == NULL))
+    {
+        return NAV_STATUS_OUT_OF_BOUNDS;
+    }
+
+    if ((psNewBaro->bIsValid == false) || (psNewBaro->u32TimestampMs == psContext->u32LastBaroTimestampMs))
+    {
+        return NAV_STATUS_STALE;
+    }
+
+    if ((psNewBaro->f32AltitudeM < NAV_BARO_MIN_PLAUSIBLE_ALT_M) ||
+        (psNewBaro->f32AltitudeM > NAV_BARO_MAX_PLAUSIBLE_ALT_M))
+    {
+        return NAV_STATUS_OUT_OF_BOUNDS;
+    }
+
+    if (psContext->u8HasLastBaro != 0U)
+    {
+        f32BaroDelta = Navigation_prvAbsF32(psNewBaro->f32AltitudeM - psContext->f32LastRawBaroAltitudeM);
+        if (f32BaroDelta > NAV_BARO_MAX_GRADIENT_M_PER_CYC)
+        {
+            return NAV_STATUS_OUT_OF_BOUNDS;
+        }
+    }
+
+    return NAV_STATUS_OK;
+}
+
 static void Navigation_prvEstimateComplementary(ts_NavContext *psContext, const ts_TopicRawImu *psRawImu)
 {
     float f32q0;
@@ -368,6 +401,92 @@ static void Navigation_prvEstimateComplementary(ts_NavContext *psContext, const 
     psContext->sEstimatedState.bIsEstimated = true;
 }
 
+static void Navigation_prvUpdateVerticalChannel(ts_NavContext *psContext, const ts_TopicRawImu *psRawImu)
+{
+    ts_TopicBarometer sBaroTopic;
+    te_GdsRetCode eGdsRet;
+    te_NavDataStatus eBaroStatus = NAV_STATUS_STALE;
+    float f32q0;
+    float f32q1;
+    float f32q2;
+    float f32q3;
+    float f32Ax;
+    float f32Ay;
+    float f32Az;
+    float f32AzInertial;
+    float f32AzEarth;
+    float f32DtS;
+    float f32AltPred;
+    float f32VelPred;
+    float f32BaroRelative;
+    float f32Error;
+
+    if ((psContext == NULL) || (psRawImu == NULL))
+    {
+        return;
+    }
+
+    (void)memset(&sBaroTopic, 0, sizeof(sBaroTopic));
+    eGdsRet = Gds_ReadBarometer(&sBaroTopic);
+
+    if (psContext->u8GroundAltitudeSet == 0U)
+    {
+        if ((eGdsRet == GDS_OK) &&
+            (sBaroTopic.bIsValid == true) &&
+            (sBaroTopic.f32AltitudeM >= NAV_BARO_MIN_PLAUSIBLE_ALT_M) &&
+            (sBaroTopic.f32AltitudeM <= NAV_BARO_MAX_PLAUSIBLE_ALT_M))
+        {
+            psContext->f32GroundLevelAltitudeM = sBaroTopic.f32AltitudeM;
+            psContext->u8GroundAltitudeSet = 1U;
+        }
+    }
+
+    f32q0 = psContext->sQuaternion.f32q0;
+    f32q1 = psContext->sQuaternion.f32q1;
+    f32q2 = psContext->sQuaternion.f32q2;
+    f32q3 = psContext->sQuaternion.f32q3;
+
+    f32Ax = psRawImu->sAccel.f32X;
+    f32Ay = psRawImu->sAccel.f32Y;
+    f32Az = psRawImu->sAccel.f32Z;
+
+    f32AzInertial = (2.0F * ((f32q1 * f32q3) - (f32q0 * f32q2)) * f32Ax) +
+                    (2.0F * ((f32q2 * f32q3) + (f32q0 * f32q1)) * f32Ay) +
+                    (((f32q0 * f32q0) - (f32q1 * f32q1) - (f32q2 * f32q2) + (f32q3 * f32q3)) * f32Az);
+    f32AzEarth = f32AzInertial - NAV_GRAVITY_MPS2;
+
+    f32DtS = psContext->sConfig.f32DtS;
+    f32AltPred = psContext->f32AltitudeEst +
+                 (psContext->f32VelocityZEst * f32DtS) +
+                 (0.5F * f32AzEarth * f32DtS * f32DtS);
+    f32VelPred = psContext->f32VelocityZEst + (f32AzEarth * f32DtS);
+
+    if (eGdsRet == GDS_OK)
+    {
+        eBaroStatus = Navigation_prvValidateBaroInput(psContext, &sBaroTopic);
+    }
+
+    if ((eBaroStatus == NAV_STATUS_OK) && (psContext->u8GroundAltitudeSet != 0U))
+    {
+        f32BaroRelative = sBaroTopic.f32AltitudeM - psContext->f32GroundLevelAltitudeM;
+        f32Error = f32BaroRelative - f32AltPred;
+
+        psContext->f32AltitudeEst = f32AltPred + (NAV_BARO_ALPHA * f32Error);
+        psContext->f32VelocityZEst = f32VelPred + (NAV_BARO_BETA * f32Error);
+        psContext->u32LastBaroTimestampMs = sBaroTopic.u32TimestampMs;
+        psContext->u8HasLastBaro = 1U;
+        psContext->f32LastRawBaroAltitudeM = sBaroTopic.f32AltitudeM;
+    }
+    else
+    {
+        psContext->f32AltitudeEst = f32AltPred;
+        psContext->f32VelocityZEst = f32VelPred;
+    }
+
+    psContext->sEstimatedState.f32AltitudeM = psContext->f32AltitudeEst;
+    psContext->sEstimatedState.f32VelocityZMps = psContext->f32VelocityZEst;
+}
+
 static void Navigation_prvApplyInitialAttitude(ts_NavContext *psContext)
 {
     if (psContext == NULL)
@@ -398,6 +517,24 @@ static void Navigation_prvApplyInitialAttitude(ts_NavContext *psContext)
     }
 }
 
+static void Navigation_prvResetVerticalChannel(ts_NavContext *psContext)
+{
+    if (psContext == NULL)
+    {
+        return;
+    }
+
+    psContext->f32GroundLevelAltitudeM = 0.0F;
+    psContext->u8GroundAltitudeSet = 0U;
+    psContext->f32AltitudeEst = 0.0F;
+    psContext->f32VelocityZEst = 0.0F;
+    psContext->u32LastBaroTimestampMs = 0U;
+    psContext->u8HasLastBaro = 0U;
+    psContext->f32LastRawBaroAltitudeM = 0.0F;
+    psContext->sEstimatedState.f32AltitudeM = 0.0F;
+    psContext->sEstimatedState.f32VelocityZMps = 0.0F;
+}
+
 static void Navigation_prvResetFilter(ts_NavContext *psContext)
 {
     if (psContext == NULL)
@@ -406,6 +543,7 @@ static void Navigation_prvResetFilter(ts_NavContext *psContext)
     }
 
     Navigation_prvApplyInitialAttitude(psContext);
+    Navigation_prvResetVerticalChannel(psContext);
     psContext->eLastDataStatus = NAV_STATUS_STALE;
 }
 
@@ -417,6 +555,7 @@ static void Navigation_prvReinit(ts_NavContext *psContext)
     }
 
     Navigation_prvApplyInitialAttitude(psContext);
+    Navigation_prvResetVerticalChannel(psContext);
     (void)memset(&psContext->sLastRawImu, 0, sizeof(psContext->sLastRawImu));
     psContext->u32LastProcessedTimestampMs = 0U;
     psContext->u8HasLastRawImu = 0U;
@@ -556,6 +695,7 @@ te_NavigationRetCode Navigation_Init(ts_NavContext *psContext, const ts_NavConfi
     psContext->sConfig = *psConfig;
     Navigation_prvSetIdentityQuaternion(&psContext->sQuaternion);
     Navigation_prvApplyInitialAttitude(psContext);
+    Navigation_prvResetVerticalChannel(psContext);
     psContext->eLastDataStatus = NAV_STATUS_STALE;
     psContext->u8IsInitialized = 1U;
 
@@ -588,6 +728,7 @@ te_NavigationRetCode NavigationTask_Step(ts_NavContext *psContext,
         if (eDataStatus == NAV_STATUS_OK)
         {
             Navigation_prvEstimateComplementary(psContext, psRawImu);
+            Navigation_prvUpdateVerticalChannel(psContext, psRawImu);
             psContext->u32LastProcessedTimestampMs = psRawImu->u32TimestampMs;
         }
     }

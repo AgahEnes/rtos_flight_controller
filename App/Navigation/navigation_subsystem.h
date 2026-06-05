@@ -16,6 +16,12 @@ extern "C" {
 #define NAV_CFG_STUCK_THRESHOLD_CYCLES      (3U)
 #define NAV_ACCEL_MAX_MPS2                  (200.0F)
 #define NAV_GYRO_MAX_RADS                   (35.0F)
+#define NAV_BARO_ALPHA                      (0.05F)
+#define NAV_BARO_BETA                       (0.01F)
+#define NAV_BARO_MIN_PLAUSIBLE_ALT_M        (-100.0F)
+#define NAV_BARO_MAX_PLAUSIBLE_ALT_M        (5000.0F)
+#define NAV_BARO_MAX_GRADIENT_M_PER_CYC     (5.0F)
+#define NAV_GRAVITY_MPS2                    (9.81F)
 
 typedef enum
 {
@@ -64,6 +70,13 @@ typedef struct
     ts_NavQuaternion sQuaternion;
     ts_TopicVehicleState sEstimatedState;
     ts_TopicRawImu sLastRawImu;
+    float f32GroundLevelAltitudeM;
+    uint8_t u8GroundAltitudeSet;
+    float f32AltitudeEst;
+    float f32VelocityZEst;
+    uint32_t u32LastBaroTimestampMs;
+    uint8_t u8HasLastBaro;
+    float f32LastRawBaroAltitudeM;
     uint32_t u32LastProcessedTimestampMs;
     uint8_t u8HasLastRawImu;
     uint8_t u8StuckCycleCount;
