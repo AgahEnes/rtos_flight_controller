@@ -2,6 +2,7 @@ import * as THREE from "three";
 
 const DEG_TO_RAD = Math.PI / 180;
 const FIN_LIMIT_DEG = 35;
+const ROCKET_SENSOR_PIVOT_Y = 1.72;
 
 function makeMaterial(color, roughness = 0.72, metalness = 0.12) {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness });
@@ -9,6 +10,10 @@ function makeMaterial(color, roughness = 0.72, metalness = 0.12) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function rocketLocalY(worldY) {
+  return worldY - ROCKET_SENSOR_PIVOT_Y;
 }
 
 function createOgiveGeometry(radius, height, radialSegments = 64) {
@@ -46,6 +51,7 @@ export class VehicleScene {
     this.camera.lookAt(0, 1.35, 0);
 
     this.vehicleGroup = new THREE.Group();
+    this.vehicleGroup.position.y = ROCKET_SENSOR_PIVOT_Y;
     this.scene.add(this.vehicleGroup);
 
     this.targetLine = null;
@@ -101,27 +107,27 @@ export class VehicleScene {
     const finMat = makeMaterial(0xe06b4f, 0.48, 0.12);
 
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.2, 2.42, 72), bodyMat);
-    body.position.y = 1.43;
+    body.position.y = rocketLocalY(1.43);
     this.vehicleGroup.add(body);
 
     const upperShoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.18, 0.12, 72), bodyMat);
-    upperShoulder.position.y = 2.70;
+    upperShoulder.position.y = rocketLocalY(2.70);
     this.vehicleGroup.add(upperShoulder);
 
     const nose = new THREE.Mesh(createOgiveGeometry(0.19, 0.66), noseMat);
-    nose.position.y = 2.76;
+    nose.position.y = rocketLocalY(2.76);
     this.vehicleGroup.add(nose);
 
     const avionicsBand = new THREE.Mesh(new THREE.CylinderGeometry(0.205, 0.205, 0.12, 72), bandMat);
-    avionicsBand.position.y = 2.21;
+    avionicsBand.position.y = rocketLocalY(2.21);
     this.vehicleGroup.add(avionicsBand);
 
     const lowerBand = new THREE.Mesh(new THREE.CylinderGeometry(0.215, 0.215, 0.08, 72), bandMat);
-    lowerBand.position.y = 0.62;
+    lowerBand.position.y = rocketLocalY(0.62);
     this.vehicleGroup.add(lowerBand);
 
     const nozzle = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.18, 0.26, 48), darkMat);
-    nozzle.position.y = 0.12;
+    nozzle.position.y = rocketLocalY(0.12);
     this.vehicleGroup.add(nozzle);
 
     const nozzleLip = new THREE.Mesh(
@@ -129,11 +135,11 @@ export class VehicleScene {
       makeMaterial(0x738188, 0.52, 0.35)
     );
     nozzleLip.rotation.x = Math.PI / 2;
-    nozzleLip.position.y = 0.0;
+    nozzleLip.position.y = rocketLocalY(0.0);
     this.vehicleGroup.add(nozzleLip);
 
     const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.42, 10), makeMaterial(0x65d6b2, 0.5, 0.1));
-    antenna.position.set(0.06, 3.46, 0);
+    antenna.position.set(0.06, rocketLocalY(3.46), 0);
     antenna.rotation.z = -0.12;
     this.vehicleGroup.add(antenna);
 
@@ -143,7 +149,7 @@ export class VehicleScene {
         makeMaterial(0x8fa19e, 0.56, 0.2)
       );
       seam.rotation.x = Math.PI / 2;
-      seam.position.y = y;
+      seam.position.y = rocketLocalY(y);
       this.vehicleGroup.add(seam);
     });
 
@@ -162,7 +168,7 @@ export class VehicleScene {
     this.finActuators = finSpecs.map((spec) => {
       const angleRad = spec.azimuthDeg * DEG_TO_RAD;
       const fin = this.createServoFin(finMat, spec.label);
-      fin.mount.position.set(Math.cos(angleRad) * bodyRadius, 0.58, Math.sin(angleRad) * bodyRadius);
+      fin.mount.position.set(Math.cos(angleRad) * bodyRadius, rocketLocalY(0.58), Math.sin(angleRad) * bodyRadius);
       fin.mount.rotation.y = angleRad;
       this.vehicleGroup.add(fin.mount);
       return {
