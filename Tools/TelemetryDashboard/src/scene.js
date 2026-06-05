@@ -38,7 +38,7 @@ export class VehicleScene {
     this.canvas = canvas;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.setClearColor(0x0f1416, 1);
+    this.renderer.setClearColor(0xf6fafb, 1);
 
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(34, 1, 0.1, 100);
@@ -57,34 +57,34 @@ export class VehicleScene {
   }
 
   buildScene() {
-    const hemi = new THREE.HemisphereLight(0xd8ffff, 0x192224, 1.35);
+    const hemi = new THREE.HemisphereLight(0xffffff, 0xb9c8c9, 1.32);
     this.scene.add(hemi);
 
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.position.set(3.5, 5.2, 4.0);
     this.scene.add(key);
 
-    const fill = new THREE.DirectionalLight(0x7ed6c6, 0.65);
+    const fill = new THREE.DirectionalLight(0xbdebe2, 0.74);
     fill.position.set(-3, 2.3, -4);
     this.scene.add(fill);
 
-    const grid = new THREE.GridHelper(7, 14, 0x405055, 0x263236);
+    const grid = new THREE.GridHelper(7, 14, 0x95aeb5, 0xd5e1e4);
     grid.position.y = -0.03;
     this.scene.add(grid);
 
     const targetGeometry = new THREE.CylinderGeometry(0.012, 0.012, 3.25, 16);
-    const targetMaterial = new THREE.MeshBasicMaterial({ color: 0x65d6b2, transparent: true, opacity: 0.45 });
+    const targetMaterial = new THREE.MeshBasicMaterial({ color: 0x0f9f8f, transparent: true, opacity: 0.56 });
     this.targetLine = new THREE.Mesh(targetGeometry, targetMaterial);
     this.targetLine.position.y = 1.6;
     this.scene.add(this.targetLine);
 
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.02, 1.18, 0.16, 72), makeMaterial(0x252d31, 0.8, 0.18));
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(1.02, 1.18, 0.16, 72), makeMaterial(0x64777d, 0.74, 0.14));
     base.position.y = 0.02;
     this.scene.add(base);
 
     const gimbalRing = new THREE.Mesh(
       new THREE.TorusGeometry(0.52, 0.018, 12, 96),
-      makeMaterial(0x58686d, 0.58, 0.28)
+      makeMaterial(0x8ea0a6, 0.52, 0.24)
     );
     gimbalRing.rotation.x = Math.PI / 2;
     gimbalRing.position.y = 0.22;

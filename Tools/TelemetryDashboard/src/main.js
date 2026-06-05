@@ -4,6 +4,8 @@ import { VehicleScene } from "./scene.js";
 import { StripChart } from "./charts.js";
 import { TelemetryParser } from "./telemetryProtocol.js";
 
+const ALTITUDE_SCALE_MAX_M = 3.0;
+
 createIcons({
   icons: {
     Activity,
@@ -56,6 +58,9 @@ const ui = {
   baroTemp: document.getElementById("baroTempValue"),
   pressure: document.getElementById("pressureValue"),
   altitude: document.getElementById("altitudeValue"),
+  altitudeStage: document.querySelector(".altitude-stage"),
+  altitudeScale: document.getElementById("altitudeScaleValue"),
+  altitudeStatus: document.getElementById("altitudeStatusValue"),
   servoA: document.getElementById("servoAValue"),
   servoB: document.getElementById("servoBValue"),
   servoC: document.getElementById("servoCValue"),
@@ -106,6 +111,10 @@ function fmt(value, digits = 1) {
   return Number.isFinite(value) ? value.toFixed(digits) : "--";
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function displayModeText(mode) {
   const text = String(mode ?? "NO CONNECTION").trim();
   if (text.length === 0) {
@@ -142,9 +151,15 @@ function setLinkVisual(isLive) {
 function updateUi(snapshot, sourceLabel) {
   const linkLive = (lastPacketAt > 0) && ((performance.now() - lastPacketAt) < 1600);
   const servosDeg = Array.isArray(snapshot.servosDeg) ? snapshot.servosDeg : [0, 0, 0, 0];
+  const hasBaroAltitude = Number.isFinite(snapshot.altitudeM);
+  const altitudeProgress = hasBaroAltitude
+    ? clamp(snapshot.altitudeM / ALTITUDE_SCALE_MAX_M, 0, 1)
+    : 0;
 
   setModeVisual(snapshot.mode, snapshot.modePill);
   setLinkVisual(linkLive);
+  ui.altitudeStage.dataset.hasBaro = hasBaroAltitude ? "true" : "false";
+  ui.altitudeStage.style.setProperty("--altitude-bottom", `${(altitudeProgress * 100).toFixed(2)}%`);
   ui.sourceBadge.textContent = sourceLabel;
   ui.roll.textContent = `${fmt(snapshot.rollDeg)} deg`;
   ui.pitch.textContent = `${fmt(snapshot.pitchDeg)} deg`;
@@ -162,6 +177,8 @@ function updateUi(snapshot, sourceLabel) {
   ui.baroTemp.textContent = `${fmt(snapshot.barometerTemperatureC, 2)} C`;
   ui.pressure.textContent = snapshot.pressurePa === null ? "-- Pa" : `${fmt(snapshot.pressurePa, 0)} Pa`;
   ui.altitude.textContent = snapshot.altitudeM === null ? "-- m" : `${fmt(snapshot.altitudeM, 2)} m`;
+  ui.altitudeScale.textContent = hasBaroAltitude ? `${fmt(snapshot.altitudeM, 2)} m` : "-- m";
+  ui.altitudeStatus.textContent = hasBaroAltitude ? "Baro altitude" : "No baro data";
   ui.servoA.value = servosDeg[0];
   ui.servoB.value = servosDeg[1];
   ui.servoC.value = servosDeg[2];
