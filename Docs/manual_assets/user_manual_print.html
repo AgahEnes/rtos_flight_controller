@@ -1,0 +1,891 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <title>RTOS Flight Controller User Manual and Setup Guide</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 16mm 15mm 17mm 15mm;
+    }
+
+    :root {
+      --ink: #17212b;
+      --muted: #5d6978;
+      --line: #d8e1ea;
+      --panel: #f7fafc;
+      --accent: #047a7a;
+      --accent-2: #2d5f9a;
+      --accent-3: #b85c22;
+      --soft-accent: #e8f6f5;
+      --soft-blue: #edf4ff;
+      --soft-orange: #fff3e8;
+      --ok: #1e7f46;
+      --warn: #b66a00;
+      --danger: #b3261e;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      font-size: 10.4pt;
+      line-height: 1.45;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      color: var(--ink);
+      line-height: 1.16;
+      break-after: avoid;
+    }
+
+    h1 {
+      font-size: 30pt;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      margin-top: 18pt;
+      margin-bottom: 8pt;
+      padding-bottom: 4pt;
+      border-bottom: 1px solid var(--line);
+      color: var(--accent-2);
+      font-size: 17pt;
+    }
+
+    h3 {
+      margin-top: 12pt;
+      margin-bottom: 5pt;
+      color: var(--accent);
+      font-size: 12.5pt;
+    }
+
+    p {
+      margin: 0 0 7pt;
+    }
+
+    ul,
+    ol {
+      margin: 0 0 8pt 17pt;
+      padding: 0;
+    }
+
+    li {
+      margin-bottom: 3pt;
+    }
+
+    code {
+      padding: 1px 4px;
+      border: 1px solid #d6dde6;
+      border-radius: 4px;
+      background: #f3f6f8;
+      color: #12333a;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 8.9pt;
+    }
+
+    pre {
+      margin: 7pt 0 10pt;
+      padding: 9pt 10pt;
+      border: 1px solid #cfd9e4;
+      border-radius: 8px;
+      background: #f5f8fb;
+      color: #17212b;
+      white-space: pre-wrap;
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 8.4pt;
+      line-height: 1.32;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 7pt 0 11pt;
+      break-inside: avoid;
+      font-size: 9.2pt;
+    }
+
+    th {
+      padding: 7pt 7pt;
+      border: 1px solid #cbd8e4;
+      background: #eaf2fb;
+      color: #163b5c;
+      text-align: left;
+      font-weight: 700;
+    }
+
+    td {
+      padding: 6pt 7pt;
+      border: 1px solid #d9e2ea;
+      vertical-align: top;
+    }
+
+    tr:nth-child(even) td {
+      background: #fbfdff;
+    }
+
+    .cover {
+      min-height: 258mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 13mm 10mm;
+      border: 2px solid #d5e4ee;
+      border-radius: 18px;
+      background:
+        radial-gradient(circle at 15% 18%, rgba(4, 122, 122, 0.12), transparent 28%),
+        radial-gradient(circle at 84% 12%, rgba(45, 95, 154, 0.13), transparent 30%),
+        linear-gradient(135deg, #ffffff 0%, #f4f9fb 100%);
+      break-after: page;
+    }
+
+    .cover-label {
+      display: inline-block;
+      padding: 5pt 9pt;
+      border: 1px solid #b8d8d6;
+      border-radius: 999px;
+      background: #e8f6f5;
+      color: var(--accent);
+      font-size: 9pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .subtitle {
+      max-width: 520px;
+      margin-top: 12pt;
+      color: var(--muted);
+      font-size: 13.2pt;
+    }
+
+    .cover-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 18pt;
+      align-items: end;
+    }
+
+    .cover-card {
+      padding: 13pt;
+      border: 1px solid #cfdee8;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.74);
+    }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8pt;
+      margin-top: 14pt;
+    }
+
+    .meta .item {
+      padding: 8pt;
+      border-left: 4px solid var(--accent);
+      background: #ffffff;
+      box-shadow: 0 1px 0 rgba(15, 33, 48, 0.06);
+    }
+
+    .item small {
+      display: block;
+      color: var(--muted);
+      font-size: 8pt;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .item strong {
+      display: block;
+      margin-top: 2pt;
+      font-size: 10.4pt;
+    }
+
+    .page-break {
+      break-before: page;
+    }
+
+    .toc {
+      padding: 12pt;
+      border: 1px solid #d3e0e8;
+      border-radius: 12px;
+      background: #f8fbfd;
+      break-after: page;
+    }
+
+    .toc ol {
+      columns: 2;
+      column-gap: 24pt;
+      margin-left: 18pt;
+    }
+
+    .callout {
+      margin: 9pt 0 11pt;
+      padding: 10pt 12pt;
+      border: 1px solid #bdd8d5;
+      border-left: 5px solid var(--accent);
+      border-radius: 10px;
+      background: var(--soft-accent);
+      break-inside: avoid;
+    }
+
+    .callout.warn {
+      border-color: #efc58c;
+      border-left-color: var(--warn);
+      background: var(--soft-orange);
+    }
+
+    .callout.blue {
+      border-color: #bfd3ef;
+      border-left-color: var(--accent-2);
+      background: var(--soft-blue);
+    }
+
+    .grid-2,
+    .grid-3 {
+      display: grid;
+      gap: 10pt;
+      margin: 8pt 0 12pt;
+      break-inside: avoid;
+    }
+
+    .grid-2 {
+      grid-template-columns: 1fr 1fr;
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, 1fr);
+    }
+
+    .card {
+      padding: 10pt;
+      border: 1px solid #d6e0e8;
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: 0 1px 0 rgba(19, 36, 49, 0.05);
+      break-inside: avoid;
+    }
+
+    .card h3 {
+      margin-top: 0;
+    }
+
+    .badge {
+      display: inline-block;
+      margin: 0 4pt 4pt 0;
+      padding: 3pt 6pt;
+      border-radius: 999px;
+      background: #edf4ff;
+      color: #244f82;
+      font-size: 8pt;
+      font-weight: 700;
+    }
+
+    .figure {
+      margin: 10pt 0 13pt;
+      padding: 10pt;
+      border: 1px solid #d8e1ea;
+      border-radius: 12px;
+      background: #fbfdff;
+      break-inside: avoid;
+    }
+
+    .figure svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .caption {
+      margin-top: 6pt;
+      color: var(--muted);
+      font-size: 8.6pt;
+    }
+
+    .pill-row {
+      margin: 7pt 0 9pt;
+    }
+
+    .checklist {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 5pt 12pt;
+      margin: 8pt 0 12pt;
+    }
+
+    .checklist div {
+      padding: 5pt 0;
+      border-bottom: 1px solid #edf1f5;
+    }
+
+    .checkbox {
+      display: inline-block;
+      width: 10pt;
+      height: 10pt;
+      margin-right: 5pt;
+      border: 1.5px solid #678;
+      border-radius: 2px;
+      vertical-align: -1pt;
+    }
+
+    .footer-note {
+      margin-top: 12pt;
+      padding-top: 8pt;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 8.5pt;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 8.8pt;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div>
+      <span class="cover-label">Embedded Systems Course Project</span>
+      <h1 style="margin-top: 18pt;">RTOS Flight Controller</h1>
+      <p class="subtitle">User Manual, Technical Setup Guide, Demo Checklist and Developer Reference for the STM32 / FreeRTOS balance-platform prototype.</p>
+      <div class="meta">
+        <div class="item"><small>Target board</small><strong>STM32 Nucleo-F411RE</strong></div>
+        <div class="item"><small>Core stack</small><strong>FreeRTOS, STM32 HAL, DMA, UART, I2C, PWM</strong></div>
+        <div class="item"><small>Sensors</small><strong>MPU6050 IMU, BMP180 Barometer</strong></div>
+        <div class="item"><small>Actuators</small><strong>Four SG90 Servo Channels</strong></div>
+      </div>
+    </div>
+    <div class="cover-grid">
+      <div class="cover-card">
+        <h3>What this guide covers</h3>
+        <p>Hardware wiring, firmware build and flash, RTOS task structure, device-driver layering, GDS data flow, telemetry transport, dashboard operation, ESP32 bridge workflow, demo preparation and troubleshooting.</p>
+      </div>
+      <div class="figure" style="margin:0;">
+        <svg viewBox="0 0 300 260" role="img" aria-label="Stylized rocket over telemetry grid">
+          <defs>
+            <linearGradient id="nose" x1="0" x2="1"><stop offset="0" stop-color="#f0b84b"/><stop offset="1" stop-color="#d66b2b"/></linearGradient>
+            <linearGradient id="body" x1="0" x2="1"><stop offset="0" stop-color="#dbe8e8"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+          </defs>
+          <rect x="15" y="202" width="270" height="36" rx="18" fill="#e8f1f5"/>
+          <g stroke="#b7cbd5" stroke-width="1">
+            <path d="M40 220 H260"/><path d="M65 205 L35 238"/><path d="M105 205 L75 238"/><path d="M145 205 L115 238"/><path d="M185 205 L155 238"/><path d="M225 205 L195 238"/>
+          </g>
+          <g transform="translate(150 28)">
+            <path d="M0 0 C-27 24 -33 44 -33 72 H33 C33 44 27 24 0 0Z" fill="url(#nose)"/>
+            <rect x="-24" y="70" width="48" height="112" rx="16" fill="url(#body)" stroke="#b8cfd2"/>
+            <rect x="-42" y="100" width="84" height="16" rx="3" fill="#047a7a"/>
+            <path d="M-24 160 L-66 190 L-47 205 L-15 176Z" fill="#d87347"/>
+            <path d="M24 160 L66 190 L47 205 L15 176Z" fill="#d87347"/>
+            <path d="M-18 182 L-38 210" stroke="#80999d" stroke-width="8" stroke-linecap="round"/>
+            <path d="M18 182 L38 210" stroke="#80999d" stroke-width="8" stroke-linecap="round"/>
+          </g>
+        </svg>
+        <div class="caption">Figure 1. Jury-facing prototype concept: an RTOS-driven balance platform visualized through live telemetry.</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="toc">
+    <h2 style="margin-top:0;">Table of Contents</h2>
+    <ol>
+      <li>Quick Start</li>
+      <li>Project Purpose</li>
+      <li>System Components</li>
+      <li>Layered Software Architecture</li>
+      <li>RTOS Tasks and Timing</li>
+      <li>Hardware Wiring</li>
+      <li>Firmware Build and Flash</li>
+      <li>Host Tests</li>
+      <li>Dashboard Operation</li>
+      <li>Telemetry Packets</li>
+      <li>ESP32 WiFi Bridge</li>
+      <li>Demo Procedure</li>
+      <li>Troubleshooting</li>
+      <li>Security and Reliability Notes</li>
+      <li>Developer Extension Guide</li>
+    </ol>
+    <div class="callout blue">
+      <strong>Operating principle:</strong> The dashboard is a visualization endpoint only. It must not estimate attitude, infer flight mode or invent sensor/servo values. If a field does not exist in the incoming packet, the corresponding UI value stays at its initial value.
+    </div>
+  </section>
+
+  <section>
+    <h2>1. Quick Start</h2>
+    <div class="grid-3">
+      <div class="card">
+        <h3>Dashboard only</h3>
+        <pre>cd Tools/TelemetryDashboard
+npm install
+npm run dev</pre>
+        <p>Open <code>http://127.0.0.1:5173</code>.</p>
+      </div>
+      <div class="card">
+        <h3>USB serial telemetry</h3>
+        <ol>
+          <li>Connect STM32 over USB.</li>
+          <li>Open the dashboard.</li>
+          <li>Click <code>Serial</code>.</li>
+          <li>Select the STM32 Virtual COM Port.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>WebSocket relay</h3>
+        <pre>npm run serial:list
+npm run serial:bridge -- \
+  --port=/dev/tty.usbmodemXXXX \
+  --baud=115200</pre>
+      </div>
+    </div>
+    <div class="callout">
+      <strong>Recommended demo path:</strong> first validate direct USB serial, then validate serial-to-WebSocket relay, and finally move to ESP32 WiFi forwarding. This separates firmware, dashboard and wireless debugging.
+    </div>
+  </section>
+
+  <section>
+    <h2>2. Project Purpose</h2>
+    <p>This project demonstrates an RTOS-based embedded flight-controller prototype for a rocket-like balance platform. The platform carries sensors and controller software on the upper body, while servo-driven fins or mechanical vanes at the lower section provide visible actuator response.</p>
+    <p>The system is not a full flight-ready rocket computer. It is a course-scale prototype whose main value is showing the interaction between embedded software layers, physical electronics, real-time task scheduling, sensor acquisition, actuator control, binary telemetry and a jury-facing dashboard.</p>
+    <div class="pill-row">
+      <span class="badge">FreeRTOS</span>
+      <span class="badge">STM32 HAL</span>
+      <span class="badge">DMA telemetry</span>
+      <span class="badge">MPU6050</span>
+      <span class="badge">BMP180</span>
+      <span class="badge">SG90 servos</span>
+      <span class="badge">3D dashboard</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. System Components</h2>
+    <table>
+      <thead><tr><th>Component</th><th>Role</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>STM32 Nucleo-F411RE</td><td>Main controller</td><td>Runs FreeRTOS, drivers, control logic and UART telemetry.</td></tr>
+        <tr><td>MPU6050</td><td>IMU</td><td>Provides accelerometer and gyroscope data through I2C.</td></tr>
+        <tr><td>BMP180</td><td>Barometer</td><td>Provides temperature, pressure and altitude estimate when enabled in firmware telemetry.</td></tr>
+        <tr><td>SG90 servos</td><td>Actuators</td><td>Driven by TIM1 PWM channels through a generic servo driver.</td></tr>
+        <tr><td>ESP32 / relay</td><td>Telemetry bridge</td><td>Forwards STM32 UART bytes to dashboard over WebSocket.</td></tr>
+        <tr><td>Telemetry dashboard</td><td>Visualization</td><td>Parses incoming packets and renders 3D rocket, mission state and sensor panels.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="page-break">
+    <h2>4. Layered Software Architecture</h2>
+    <div class="figure">
+      <svg viewBox="0 0 920 520" role="img" aria-label="Layered software architecture">
+        <defs>
+          <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#9fb0bd" flood-opacity="0.28"/>
+          </filter>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10Z" fill="#5d6978"/>
+          </marker>
+        </defs>
+        <rect x="30" y="28" width="860" height="58" rx="13" fill="#e8f6f5" stroke="#9dccca" filter="url(#shadow)"/>
+        <text x="460" y="63" text-anchor="middle" font-size="22" font-weight="700" fill="#047a7a">Dashboard / MATLAB Tools</text>
+        <rect x="30" y="118" width="860" height="58" rx="13" fill="#edf4ff" stroke="#bcd1ed" filter="url(#shadow)"/>
+        <text x="460" y="153" text-anchor="middle" font-size="22" font-weight="700" fill="#2d5f9a">Telemetry Packet Stream</text>
+        <rect x="30" y="208" width="860" height="58" rx="13" fill="#fff3e8" stroke="#edc299" filter="url(#shadow)"/>
+        <text x="460" y="243" text-anchor="middle" font-size="22" font-weight="700" fill="#b85c22">App Tasks: Sensor, Navigation, FMC, Actuator, Telemetry</text>
+        <rect x="30" y="298" width="860" height="58" rx="13" fill="#f8fbfd" stroke="#cadbe5" filter="url(#shadow)"/>
+        <text x="460" y="333" text-anchor="middle" font-size="22" font-weight="700" fill="#17212b">Global Data Space and DDI Adapters</text>
+        <rect x="30" y="388" width="410" height="58" rx="13" fill="#ffffff" stroke="#cadbe5" filter="url(#shadow)"/>
+        <text x="235" y="423" text-anchor="middle" font-size="20" font-weight="700" fill="#17212b">Platform Independent Drivers</text>
+        <rect x="480" y="388" width="410" height="58" rx="13" fill="#ffffff" stroke="#cadbe5" filter="url(#shadow)"/>
+        <text x="685" y="423" text-anchor="middle" font-size="20" font-weight="700" fill="#17212b">STM32 HAL Port Layers</text>
+        <rect x="30" y="470" width="860" height="40" rx="10" fill="#17212b"/>
+        <text x="460" y="496" text-anchor="middle" font-size="18" font-weight="700" fill="#ffffff">STM32 HAL + FreeRTOS + Hardware</text>
+        <g stroke="#5d6978" stroke-width="2" marker-end="url(#arrow)">
+          <path d="M460 88 V114"/>
+          <path d="M460 178 V204"/>
+          <path d="M460 268 V294"/>
+          <path d="M315 358 V384"/>
+          <path d="M625 358 V384"/>
+          <path d="M235 448 V468"/>
+          <path d="M685 448 V468"/>
+        </g>
+      </svg>
+      <div class="caption">Figure 2. The architecture keeps driver core logic independent from STM32 HAL and RTOS details. Platform-specific actions are injected through port-layer callbacks.</div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <h3>Why this matters</h3>
+        <ul>
+          <li>Core drivers can be compiled and tested on a host machine.</li>
+          <li>HAL, DMA, mutex and timing details stay in the STM32 port layer.</li>
+          <li>Application tasks exchange data through GDS rather than directly coupling to drivers.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Main code locations</h3>
+        <ul>
+          <li><code>Drivers/mpu6050</code>, <code>Drivers/bmp180</code>, <code>Drivers/servo</code></li>
+          <li><code>App/SensorAcq</code>, <code>App/Navigation</code>, <code>App/FlightManagementControl</code></li>
+          <li><code>App/Telemetry</code>, <code>Platform/STM32</code></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="page-break">
+    <h2>5. Data Flow</h2>
+    <div class="figure">
+      <svg viewBox="0 0 940 500" role="img" aria-label="Sensor to dashboard data flow">
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10Z" fill="#516070"/>
+          </marker>
+        </defs>
+        <g font-family="Arial, sans-serif" font-size="17">
+          <rect x="35" y="45" width="145" height="60" rx="12" fill="#e8f6f5" stroke="#9dccca"/><text x="108" y="80" text-anchor="middle" font-weight="700">MPU6050</text>
+          <rect x="35" y="145" width="145" height="60" rx="12" fill="#e8f6f5" stroke="#9dccca"/><text x="108" y="180" text-anchor="middle" font-weight="700">BMP180</text>
+          <rect x="235" y="45" width="160" height="60" rx="12" fill="#fff" stroke="#cbd8e4"/><text x="315" y="80" text-anchor="middle" font-weight="700">SensorTask</text>
+          <rect x="455" y="72" width="130" height="105" rx="13" fill="#edf4ff" stroke="#bcd1ed"/><text x="520" y="118" text-anchor="middle" font-weight="700">GDS</text><text x="520" y="142" text-anchor="middle" font-size="13">publish / subscribe</text>
+          <rect x="645" y="35" width="170" height="50" rx="11" fill="#fff3e8" stroke="#edc299"/><text x="730" y="67" text-anchor="middle" font-weight="700">NavigationTask</text>
+          <rect x="645" y="112" width="170" height="50" rx="11" fill="#fff3e8" stroke="#edc299"/><text x="730" y="144" text-anchor="middle" font-weight="700">FlightControlTask</text>
+          <rect x="645" y="189" width="170" height="50" rx="11" fill="#fff3e8" stroke="#edc299"/><text x="730" y="221" text-anchor="middle" font-weight="700">ActuatorTask</text>
+          <rect x="645" y="294" width="170" height="50" rx="11" fill="#fff3e8" stroke="#edc299"/><text x="730" y="326" text-anchor="middle" font-weight="700">TelemetryTask</text>
+          <rect x="455" y="280" width="130" height="75" rx="13" fill="#f8fbfd" stroke="#cadbe5"/><text x="520" y="310" text-anchor="middle" font-weight="700">UART DMA</text><text x="520" y="333" text-anchor="middle" font-size="13">binary frames</text>
+          <rect x="235" y="370" width="160" height="60" rx="12" fill="#edf4ff" stroke="#bcd1ed"/><text x="315" y="405" text-anchor="middle" font-weight="700">ESP32 / Relay</text>
+          <rect x="645" y="370" width="170" height="60" rx="12" fill="#e8f6f5" stroke="#9dccca"/><text x="730" y="405" text-anchor="middle" font-weight="700">Dashboard</text>
+        </g>
+        <g stroke="#516070" stroke-width="2.2" fill="none" marker-end="url(#arrow2)">
+          <path d="M180 75 H232"/>
+          <path d="M180 175 C205 175 205 75 232 75"/>
+          <path d="M395 75 C430 75 430 125 452 125"/>
+          <path d="M588 105 C617 85 617 60 642 60"/>
+          <path d="M588 125 H642"/>
+          <path d="M588 150 C617 174 617 214 642 214"/>
+          <path d="M588 160 C610 230 617 319 642 319"/>
+          <path d="M645 319 H588"/>
+          <path d="M520 280 V180"/>
+          <path d="M455 318 C410 330 395 360 395 400"/>
+          <path d="M395 400 H642"/>
+        </g>
+      </svg>
+      <div class="caption">Figure 3. Sensor data is published to GDS, consumed by navigation/control/actuator/telemetry tasks, and finally visualized by the dashboard.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>6. RTOS Tasks and Timing</h2>
+    <table>
+      <thead><tr><th>Task</th><th>Period</th><th>Priority</th><th>Responsibility</th></tr></thead>
+      <tbody>
+        <tr><td>SensorTask</td><td>10 ms</td><td>AboveNormal</td><td>Runs sensor acquisition, publishes raw IMU and barometer topics.</td></tr>
+        <tr><td>NavTask</td><td>10 ms</td><td>AboveNormal</td><td>Reads raw IMU, updates vehicle attitude and rates.</td></tr>
+        <tr><td>FlightControlTask</td><td>10 ms</td><td>AboveNormal</td><td>Runs flight-mode logic and produces fin commands.</td></tr>
+        <tr><td>ActuatorTask</td><td>10 ms</td><td>AboveNormal</td><td>Applies latest GDS actuator command to servo drivers.</td></tr>
+        <tr><td>TelemetryTask</td><td>50 ms</td><td>Normal</td><td>Packs GDS data and sends it over UART DMA.</td></tr>
+      </tbody>
+    </table>
+
+    <div class="figure">
+      <svg viewBox="0 0 920 230" role="img" aria-label="RTOS task timing">
+        <line x1="70" y1="45" x2="880" y2="45" stroke="#a7b7c7" stroke-width="2"/>
+        <g font-family="Arial, sans-serif" font-size="13" fill="#5d6978">
+          <text x="70" y="25" text-anchor="middle">0 ms</text>
+          <text x="230" y="25" text-anchor="middle">10</text>
+          <text x="390" y="25" text-anchor="middle">20</text>
+          <text x="550" y="25" text-anchor="middle">30</text>
+          <text x="710" y="25" text-anchor="middle">40</text>
+          <text x="870" y="25" text-anchor="middle">50</text>
+        </g>
+        <g stroke="#bcc8d4" stroke-width="1">
+          <line x1="70" y1="35" x2="70" y2="205"/><line x1="230" y1="35" x2="230" y2="205"/><line x1="390" y1="35" x2="390" y2="205"/><line x1="550" y1="35" x2="550" y2="205"/><line x1="710" y1="35" x2="710" y2="205"/><line x1="870" y1="35" x2="870" y2="205"/>
+        </g>
+        <g font-family="Arial, sans-serif" font-size="14" font-weight="700">
+          <text x="20" y="75">Sensor</text><text x="20" y="105">Nav</text><text x="20" y="135">FMC</text><text x="20" y="165">Actuator</text><text x="20" y="195">Telemetry</text>
+        </g>
+        <g>
+          <rect x="70" y="61" width="44" height="18" rx="5" fill="#047a7a"/><rect x="230" y="61" width="44" height="18" rx="5" fill="#047a7a"/><rect x="390" y="61" width="44" height="18" rx="5" fill="#047a7a"/><rect x="550" y="61" width="44" height="18" rx="5" fill="#047a7a"/><rect x="710" y="61" width="44" height="18" rx="5" fill="#047a7a"/><rect x="870" y="61" width="44" height="18" rx="5" fill="#047a7a"/>
+          <rect x="78" y="91" width="44" height="18" rx="5" fill="#2d5f9a"/><rect x="238" y="91" width="44" height="18" rx="5" fill="#2d5f9a"/><rect x="398" y="91" width="44" height="18" rx="5" fill="#2d5f9a"/><rect x="558" y="91" width="44" height="18" rx="5" fill="#2d5f9a"/><rect x="718" y="91" width="44" height="18" rx="5" fill="#2d5f9a"/>
+          <rect x="86" y="121" width="44" height="18" rx="5" fill="#b85c22"/><rect x="246" y="121" width="44" height="18" rx="5" fill="#b85c22"/><rect x="406" y="121" width="44" height="18" rx="5" fill="#b85c22"/><rect x="566" y="121" width="44" height="18" rx="5" fill="#b85c22"/><rect x="726" y="121" width="44" height="18" rx="5" fill="#b85c22"/>
+          <rect x="94" y="151" width="44" height="18" rx="5" fill="#7b4aa2"/><rect x="254" y="151" width="44" height="18" rx="5" fill="#7b4aa2"/><rect x="414" y="151" width="44" height="18" rx="5" fill="#7b4aa2"/><rect x="574" y="151" width="44" height="18" rx="5" fill="#7b4aa2"/><rect x="734" y="151" width="44" height="18" rx="5" fill="#7b4aa2"/>
+          <rect x="110" y="181" width="74" height="18" rx="5" fill="#1e7f46"/><rect x="870" y="181" width="74" height="18" rx="5" fill="#1e7f46"/>
+        </g>
+      </svg>
+      <div class="caption">Figure 4. The control loop tasks run at 10 ms; telemetry transmits a lower-rate dashboard stream at 50 ms.</div>
+    </div>
+  </section>
+
+  <section class="page-break">
+    <h2>7. Hardware Wiring</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3>I2C sensors</h3>
+        <table>
+          <thead><tr><th>STM32F411RE</th><th>Signal</th><th>Sensor</th></tr></thead>
+          <tbody>
+            <tr><td>PB8</td><td>I2C1 SCL</td><td>MPU6050 SCL, BMP180 SCL</td></tr>
+            <tr><td>PB9</td><td>I2C1 SDA</td><td>MPU6050 SDA, BMP180 SDA</td></tr>
+            <tr><td>3V3</td><td>Power</td><td>Sensor VCC</td></tr>
+            <tr><td>GND</td><td>Ground</td><td>Sensor GND</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="card">
+        <h3>Servo PWM</h3>
+        <table>
+          <thead><tr><th>STM32F411RE</th><th>TIM channel</th><th>Servo</th></tr></thead>
+          <tbody>
+            <tr><td>PA8</td><td>TIM1_CH1</td><td>Fin A</td></tr>
+            <tr><td>PA9</td><td>TIM1_CH2</td><td>Fin B</td></tr>
+            <tr><td>PA10</td><td>TIM1_CH3</td><td>Fin C</td></tr>
+            <tr><td>PA11</td><td>TIM1_CH4</td><td>Fin D</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="callout warn">
+      <strong>Servo power warning:</strong> Do not power SG90 servos from the STM32 3.3 V pin. Use a separate 5 V supply for the servos, and connect servo ground to STM32 ground.
+    </div>
+    <table>
+      <thead><tr><th>Telemetry UART</th><th>Value</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td>USART2 TX</td><td>PA2</td><td>STM32 telemetry output, also used by ST-LINK VCP on Nucleo boards.</td></tr>
+        <tr><td>USART2 RX</td><td>PA3</td><td>Only needed if bidirectional command input is added.</td></tr>
+        <tr><td>Baudrate</td><td>115200</td><td>8 data bits, no parity, 1 stop bit.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>8. Firmware Build and Flash</h2>
+    <h3>Clone</h3>
+    <pre>git clone --recurse-submodules https://github.com/AgahEnes/rtos_flight_controller.git
+cd rtos_flight_controller
+git submodule update --init --recursive</pre>
+    <h3>CMake build</h3>
+    <pre>cmake --preset Debug
+cmake --build --preset Debug</pre>
+    <p>Release build:</p>
+    <pre>cmake --preset Release
+cmake --build --preset Release</pre>
+    <h3>Flash</h3>
+    <p>Use STM32CubeIDE or STM32CubeProgrammer with ST-LINK/SWD. Open the generated ELF from <code>build/Debug</code> or <code>build/Release</code>, download it to the board and reset.</p>
+    <div class="callout blue">
+      <strong>Submodule note:</strong> <code>Drivers/mpu6050</code> is a submodule. If files are missing, run <code>git submodule update --init --recursive</code>.
+    </div>
+  </section>
+
+  <section>
+    <h2>9. Host Tests</h2>
+    <pre>cmake -S tests/host -B build/host
+cmake --build build/host
+ctest --test-dir build/host --output-on-failure</pre>
+    <p>Host tests validate application logic and platform-independent driver behavior on the development machine. They do not verify physical wiring, electrical signal quality or sensor presence.</p>
+    <table>
+      <thead><tr><th>Test area</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>Sensor acquisition</td><td>Manager, DDI and GDS publish behavior.</td></tr>
+        <tr><td>Navigation</td><td>Attitude estimator logic and state validity rules.</td></tr>
+        <tr><td>Flight control</td><td>Mode transitions and servo command generation.</td></tr>
+        <tr><td>Device drivers</td><td>MPU6050, BMP180 and servo core behavior without STM32 HAL.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="page-break">
+    <h2>10. Dashboard Operation</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Serial mode</h3>
+        <ol>
+          <li>Start the dashboard.</li>
+          <li>Click <code>Serial</code>.</li>
+          <li>Select STM32 Virtual COM Port.</li>
+          <li>Verify frame count increases.</li>
+        </ol>
+      </div>
+      <div class="card">
+        <h3>WiFi / WebSocket mode</h3>
+        <ol>
+          <li>Start ESP32 bridge or relay.</li>
+          <li>Enter <code>ws://&lt;ip&gt;:&lt;port&gt;/telemetry</code>.</li>
+          <li>Click <code>WiFi</code>.</li>
+          <li>Verify source and packet type.</li>
+        </ol>
+      </div>
+    </div>
+    <table>
+      <thead><tr><th>Dashboard panel</th><th>Displayed information</th><th>Data source rule</th></tr></thead>
+      <tbody>
+        <tr><td>3D Rocket View</td><td>Roll, pitch, yaw visualization</td><td>Only from parsed attitude fields.</td></tr>
+        <tr><td>Mission State</td><td>Mode, tilt, frame count, packet type</td><td>Mode comes from firmware packet, not UI inference.</td></tr>
+        <tr><td>Sensor Stream</td><td>Accel and gyro values</td><td>Raw IMU packet fields.</td></tr>
+        <tr><td>Barometer</td><td>Temperature, pressure, altitude</td><td>Only updates when packet includes BMP180 fields.</td></tr>
+        <tr><td>Servo Commands</td><td>Fin angles</td><td>Only updates when packet includes servo command fields.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>11. Telemetry Packet Architecture</h2>
+    <div class="figure">
+      <svg viewBox="0 0 920 210" role="img" aria-label="Telemetry packet byte layout">
+        <g font-family="Arial, sans-serif">
+          <rect x="35" y="70" width="145" height="62" rx="10" fill="#e8f6f5" stroke="#9dccca"/>
+          <rect x="180" y="70" width="88" height="62" rx="10" fill="#edf4ff" stroke="#bcd1ed"/>
+          <rect x="268" y="70" width="520" height="62" rx="10" fill="#fff3e8" stroke="#edc299"/>
+          <rect x="788" y="70" width="98" height="62" rx="10" fill="#fdeeee" stroke="#ebb1ad"/>
+          <text x="108" y="96" text-anchor="middle" font-size="16" font-weight="700" fill="#047a7a">SYNC</text>
+          <text x="108" y="119" text-anchor="middle" font-size="13">0xA5 0x5A</text>
+          <text x="224" y="96" text-anchor="middle" font-size="16" font-weight="700" fill="#2d5f9a">ID + SEQ</text>
+          <text x="224" y="119" text-anchor="middle" font-size="13">0x12 / 0x81</text>
+          <text x="528" y="96" text-anchor="middle" font-size="16" font-weight="700" fill="#b85c22">PAYLOAD</text>
+          <text x="528" y="119" text-anchor="middle" font-size="13">timestamp, IMU, attitude, mode, calibration event fields</text>
+          <text x="837" y="96" text-anchor="middle" font-size="16" font-weight="700" fill="#b3261e">CRC16</text>
+          <text x="837" y="119" text-anchor="middle" font-size="13">CCITT-FALSE</text>
+          <g fill="#5d6978" font-size="12">
+            <text x="35" y="55">Byte 0</text><text x="180" y="55">2</text><text x="268" y="55">4</text><text x="788" y="55">N-2</text><text x="880" y="55">N</text>
+          </g>
+        </g>
+      </svg>
+      <div class="caption">Figure 5. Telemetry packets are binary frames with sync bytes, message id, payload and CRC16/CCITT-FALSE. CRC detects corruption; it is not encryption.</div>
+    </div>
+
+    <table>
+      <thead><tr><th>Frame</th><th>Message ID</th><th>Length</th><th>Purpose</th></tr></thead>
+      <tbody>
+        <tr><td>IMU + Vehicle State</td><td><code>0x12</code></td><td>64 bytes</td><td>Main live dashboard frame: timestamp, IMU, attitude, rates, estimator flag and flight mode.</td></tr>
+        <tr><td>IMU Calibration Event</td><td><code>0x81</code></td><td>43 bytes</td><td>Asynchronous calibration event frame.</td></tr>
+        <tr><td>Legacy / Extended frames</td><td><code>0x10</code></td><td>Varies</td><td>Compatibility with older local tests and mentor packet experiments.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="page-break">
+    <h2>12. ESP32 WiFi Bridge</h2>
+    <p>The ESP32 bridge should forward STM32 telemetry bytes without changing the packet format. The dashboard parser handles frame synchronization, CRC and decoding.</p>
+    <div class="figure">
+      <svg viewBox="0 0 920 190" role="img" aria-label="ESP32 bridge flow">
+        <defs><marker id="arrow3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#516070"/></marker></defs>
+        <g font-family="Arial, sans-serif" font-size="17" font-weight="700">
+          <rect x="40" y="66" width="150" height="64" rx="13" fill="#e8f6f5" stroke="#9dccca"/><text x="115" y="104" text-anchor="middle">STM32 UART</text>
+          <rect x="300" y="66" width="160" height="64" rx="13" fill="#edf4ff" stroke="#bcd1ed"/><text x="380" y="104" text-anchor="middle">ESP32 Bridge</text>
+          <rect x="570" y="66" width="160" height="64" rx="13" fill="#fff3e8" stroke="#edc299"/><text x="650" y="104" text-anchor="middle">WebSocket</text>
+          <rect x="800" y="66" width="110" height="64" rx="13" fill="#e8f6f5" stroke="#9dccca"/><text x="855" y="104" text-anchor="middle">Dashboard</text>
+        </g>
+        <g stroke="#516070" stroke-width="2.3" fill="none" marker-end="url(#arrow3)">
+          <path d="M190 98 H297"/><path d="M460 98 H567"/><path d="M730 98 H797"/>
+        </g>
+        <g font-family="Arial, sans-serif" font-size="13" fill="#5d6978">
+          <text x="245" y="87" text-anchor="middle">binary bytes</text>
+          <text x="515" y="87" text-anchor="middle">binary frames</text>
+          <text x="765" y="87" text-anchor="middle">parse + render</text>
+        </g>
+      </svg>
+      <div class="caption">Figure 6. ESP32 is a transport bridge, not a parser. It must not rewrite telemetry payloads.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>13. Demo Procedure</h2>
+    <ol>
+      <li>Show the physical prototype: STM32 board, sensors, servo fins and small mechanical structure.</li>
+      <li>Explain the layered software architecture and GDS publish/subscribe flow.</li>
+      <li>Start the dashboard and connect through USB Serial or WebSocket.</li>
+      <li>Move the platform by hand in roll and pitch; verify the 3D rocket follows the real motion.</li>
+      <li>Show live IMU values and trend graphs.</li>
+      <li>Explain flight mode and telemetry packet format.</li>
+      <li>If servo telemetry is present, show physical fins and dashboard fins moving together.</li>
+      <li>If BMP180 telemetry is present, show the altitude scale and barometer panel.</li>
+    </ol>
+
+    <h3>Pre-demo checklist</h3>
+    <div class="checklist">
+      <div><span class="checkbox"></span>Repo submodules are initialized.</div>
+      <div><span class="checkbox"></span>Firmware build passes.</div>
+      <div><span class="checkbox"></span>STM32 is flashed and reset.</div>
+      <div><span class="checkbox"></span>Dashboard opens in browser.</div>
+      <div><span class="checkbox"></span>Frame count increases.</div>
+      <div><span class="checkbox"></span>Roll/pitch/yaw direction is correct.</div>
+      <div><span class="checkbox"></span>Servo power and common ground are verified.</div>
+      <div><span class="checkbox"></span>Backup USB cable and jumper wires are ready.</div>
+    </div>
+  </section>
+
+  <section class="page-break">
+    <h2>14. Troubleshooting</h2>
+    <table>
+      <thead><tr><th>Symptom</th><th>Likely causes</th><th>What to check</th></tr></thead>
+      <tbody>
+        <tr><td>Dashboard shows No Link</td><td>No serial port, wrong WebSocket URL, bridge not running, firmware not sending.</td><td>Use <code>npm run serial:list</code>, verify URL and frame count.</td></tr>
+        <tr><td>Frame count increases but model does not move</td><td>Packet has raw IMU but no attitude fields, or NavigationTask is not publishing.</td><td>Check packet type and <code>VehicleState</code> topic.</td></tr>
+        <tr><td>Servo does not move</td><td>No external 5 V, missing common ground, PWM not started, no active GDS command.</td><td>Check PA8-PA11, power rail and <code>ActuatorCmd</code>.</td></tr>
+        <tr><td>I2C sensor fails</td><td>SDA/SCL reversed, wrong voltage, missing pull-up, wrong address.</td><td>Check PB8/PB9, 3.3 V, addresses <code>0x68</code> and <code>0x77</code>.</td></tr>
+        <tr><td>UART/RFD/ESP32 receives nothing</td><td>TX/RX not crossed, no common ground, baud mismatch, ST-LINK VCP sharing.</td><td>Validate USB serial first, then move to external transport.</td></tr>
+        <tr><td>Build cannot find toolchain</td><td>ARM GNU Toolchain missing from PATH.</td><td>Run <code>arm-none-eabi-gcc --version</code>.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>15. Security and Reliability Notes</h2>
+    <div class="grid-2">
+      <div class="card">
+        <h3>Telemetry integrity</h3>
+        <p>CRC16 detects accidental corruption but does not provide authentication or encryption. Final deployments should add HMAC/CMAC and sequence/timestamp replay checks.</p>
+      </div>
+      <div class="card">
+        <h3>Runtime safety</h3>
+        <p>Use stack watermark checks, watchdog heartbeat, stale actuator timeout and neutral servo fallback for safer runtime behavior.</p>
+      </div>
+      <div class="card">
+        <h3>Sensor sanity</h3>
+        <p>Validate NaN/Inf, range and rate-of-change before publishing sensor-derived data to GDS.</p>
+      </div>
+      <div class="card">
+        <h3>Deployment</h3>
+        <p>For final hardware, avoid leaving debug interfaces open and never store production WiFi secrets directly in public source files.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>16. Developer Extension Guide</h2>
+    <h3>Adding a new sensor</h3>
+    <ol>
+      <li>Create a platform-independent core driver under <code>Drivers/&lt;sensor&gt;</code>.</li>
+      <li>Keep STM32 HAL calls only in the port layer.</li>
+      <li>Add a DDI adapter so SensorManager can use the driver generically.</li>
+      <li>Publish data to a GDS topic.</li>
+      <li>Extend telemetry only after real producer data exists.</li>
+      <li>Update dashboard parser to read explicit packet fields only.</li>
+    </ol>
+    <h3>Adding a new telemetry field</h3>
+    <pre>Producer Task -> GDS Topic -> TelemetryTask Packet Field -> Dashboard Parser -> UI Render</pre>
+    <div class="callout warn">
+      <strong>Do not invert this flow:</strong> The dashboard must not create fake operational data to fill missing firmware fields. It may only display fields that the packet actually contains.
+    </div>
+  </section>
+
+  <section>
+    <h2>17. Reference Files</h2>
+    <table>
+      <thead><tr><th>Topic</th><th>File</th></tr></thead>
+      <tbody>
+        <tr><td>Full Markdown manual</td><td><code>Docs/user_manual_and_setup_guide.md</code></td></tr>
+        <tr><td>Telemetry dashboard</td><td><code>Tools/TelemetryDashboard/README.md</code></td></tr>
+        <tr><td>Telemetry packet plan</td><td><code>Docs/Telemetry/telemetry_dashboard_packet_plan.md</code></td></tr>
+        <tr><td>ESP32 bridge notes</td><td><code>Docs/Telemetry/esp32_wifi_bridge_notes.md</code></td></tr>
+        <tr><td>GDS topics</td><td><code>App/SensorAcq/global_data_space.h</code></td></tr>
+        <tr><td>Platform RTOS binding</td><td><code>Platform/STM32/app_platform_port.c</code></td></tr>
+      </tbody>
+    </table>
+    <p class="footer-note">Generated for the RTOS Flight Controller course project documentation branch. This PDF is a polished print companion to the repository Markdown manual.</p>
+  </section>
+</body>
+</html>
